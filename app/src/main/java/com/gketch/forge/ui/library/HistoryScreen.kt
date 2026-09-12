@@ -1,6 +1,8 @@
 package com.gketch.forge.ui.library
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,6 +63,8 @@ fun HistoryScreen(
     val resumeStore = remember { ResumeStore(context) }
     val recent by recentStore.recent.collectAsState(initial = emptyList())
     var clearDialog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    BackHandler { onBack() }
 
     Column(
         modifier = Modifier
@@ -102,6 +106,7 @@ fun HistoryScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(recent, key = { it.uri.toString() }) { item ->

@@ -1,5 +1,8 @@
 package com.gketch.forge.ui.library
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,8 +28,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -155,6 +160,22 @@ fun LibraryScreen(
     var sortMenu by remember { mutableStateOf(false) }
     var overflowMenu by remember { mutableStateOf(false) }
     val permitted = hasMediaPermission(context)
+    val activity = remember(context) { context.findActivity() }
+    var showExitDialog by remember { mutableStateOf(false) }
+
+    val videoListState = rememberKeyedLazyListState("lib:VIDEO:list", viewModel)
+    val videoGridState = rememberKeyedLazyGridState("lib:VIDEO:grid", viewModel)
+    val audioListState = rememberKeyedLazyListState("lib:AUDIO:list", viewModel)
+    val audioGridState = rememberKeyedLazyGridState("lib:AUDIO:grid", viewModel)
+    val mediaListState = if (state.tab == LibraryTab.AUDIO) audioListState else videoListState
+    val mediaGridState = if (state.tab == LibraryTab.AUDIO) audioGridState else videoGridState
+    val browseListState = rememberKeyedLazyListState("browse", viewModel)
+    val folderKey = state.selectedFolder?.bucketId?.toString() ?: "none"
+    val folderListState = rememberKeyedLazyListState("folder:$folderKey:list", viewModel)
+    val folderGridState = rememberKeyedLazyGridState("folder:$folderKey:grid", viewModel)
+    val playlistsListState = rememberKeyedLazyListState("playlists", viewModel)
+    val playlistKey = state.selectedPlaylist?.id ?: "none"
+    val playlistItemsState = rememberKeyedLazyListState("playlist:$playlistKey", viewModel)
 
     val importM3uLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -203,8 +224,18 @@ fun LibraryScreen(
         snackbar.showSnackbar(msg)
         snackScopeMsg = null
     }
-    BackHandler(enabled = state.selecting) {
-        viewModel.clearSelection()
+    fun handleLibraryBack() {
+        if (showExitDialog) {
+            showExitDialog = false
+            return
+        }
+        if (!viewModel.consumeBack()) {
+            showExitDialog = true
+        }
+    }
+
+    BackHandler(enabled = true) {
+        handleLibraryBack()
     }
 
     Scaffold(
@@ -416,6 +447,8 @@ fun LibraryScreen(
                 state = state,
                 permitted = permitted,
                 padding = padding,
+                listState = mediaListState,
+                gridState = mediaGridState,
                 onPlay = onPlay,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddToPlaylist = { addToPlaylistItem = it },
@@ -427,6 +460,9 @@ fun LibraryScreen(
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
                 padding = padding,
+                browseListState = browseListState,
+                folderListState = folderListState,
+                folderGridState = folderGridState,
                 onOpenFolder = viewModel::openFolder,
                 onCloseFolder = viewModel::closeFolder,
                 onPlay = onPlay,
@@ -443,6 +479,8 @@ fun LibraryScreen(
             LibraryTab.PLAYLISTS -> PlaylistsBody(
                 state = state,
                 padding = padding,
+                playlistsListState = playlistsListState,
+                playlistItemsState = playlistItemsState,
                 onOpen = viewModel::openPlaylist,
                 onClose = viewModel::closePlaylist,
                 onPlay = onPlay,
@@ -612,6 +650,28 @@ fun LibraryScreen(
             },
         )
     }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = ForgeGraphite,
+            title = { Text("Exit Forge?", color = Color.White) },
+            text = { Text("Close the app?", color = ForgeMuted) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExitDialog = false
+                        activity?.finish()
+                    },
+                ) { Text("Exit", color = ForgeAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Cancel", color = ForgeMuted)
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -619,6 +679,8 @@ private fun LibraryBody(
     state: LibraryUiState,
     permitted: Boolean,
     padding: PaddingValues,
+    listState: LazyListState,
+    gridState: LazyGridState,
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
@@ -655,6 +717,7 @@ private fun LibraryBody(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(140.dp),
                 modifier = Modifier.fillMaxSize().padding(padding),
+                state = gridState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -706,6 +769,7 @@ private fun LibraryBody(
         else -> {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
+                state = listState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -760,6 +824,9 @@ private fun LibraryBody(
 private fun FoldersBody(
     state: LibraryUiState,
     padding: PaddingValues,
+    browseListState: LazyListState,
+    folderListState: LazyListState,
+    folderGridState: LazyGridState,
     onOpenFolder: (MediaFolder) -> Unit,
     onCloseFolder: () -> Unit,
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
@@ -784,6 +851,7 @@ private fun FoldersBody(
         else state.folders.filter { it.name.lowercase().contains(q) }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
+            state = browseListState,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -857,6 +925,7 @@ private fun FoldersBody(
             if (state.layout == LibraryLayout.LIST) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = folderListState,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -880,6 +949,7 @@ private fun FoldersBody(
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(140.dp),
                     modifier = Modifier.fillMaxSize(),
+                    state = folderGridState,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -909,6 +979,8 @@ private fun FoldersBody(
 private fun PlaylistsBody(
     state: LibraryUiState,
     padding: PaddingValues,
+    playlistsListState: LazyListState,
+    playlistItemsState: LazyListState,
     onOpen: (ForgePlaylist) -> Unit,
     onClose: () -> Unit,
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
@@ -924,6 +996,7 @@ private fun PlaylistsBody(
     if (selected == null) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
+            state = playlistsListState,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -986,6 +1059,7 @@ private fun PlaylistsBody(
                 }
             }
             LazyColumn(
+                state = playlistItemsState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -1758,4 +1832,13 @@ fun formatDuration(ms: Long): String {
     } else {
         String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

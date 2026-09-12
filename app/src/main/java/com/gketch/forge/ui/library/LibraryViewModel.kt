@@ -78,6 +78,38 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
+    private val listAnchors = mutableMapOf<String, ScrollAnchor>()
+    private val gridAnchors = mutableMapOf<String, ScrollAnchor>()
+
+    fun listAnchor(key: String): ScrollAnchor = listAnchors[key] ?: ScrollAnchor()
+
+    fun saveListAnchor(key: String, index: Int, offset: Int) {
+        listAnchors[key] = ScrollAnchor(index, offset)
+    }
+
+    fun gridAnchor(key: String): ScrollAnchor = gridAnchors[key] ?: ScrollAnchor()
+
+    fun saveGridAnchor(key: String, index: Int, offset: Int) {
+        gridAnchors[key] = ScrollAnchor(index, offset)
+    }
+
+    /** Pops folder / playlist / selection. Returns false at library root (caller shows exit confirm). */
+    fun consumeBack(): Boolean {
+        val st = _state.value
+        if (st.selecting) {
+            clearSelection()
+            return true
+        }
+        if (st.tab == LibraryTab.BROWSE && st.selectedFolder != null) {
+            closeFolder()
+            return true
+        }
+        if (st.tab == LibraryTab.PLAYLISTS && st.selectedPlaylist != null) {
+            closePlaylist()
+            return true
+        }
+        return false
+    }
 
     init {
         viewModelScope.launch {
@@ -153,7 +185,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun refresh() {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            val keepVisible = _state.value.items.isNotEmpty()
+            _state.update { it.copy(loading = !keepVisible, error = null) }
             try {
                 val hidden = _state.value.hiddenBucketIds
                 val safItems = try {
@@ -221,9 +254,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 tab = tab,
                 filter = filter,
                 filtered = applyFilterAndSort(it.items, filter, it.sort),
-                selectedFolder = if (tab != LibraryTab.BROWSE) null else it.selectedFolder,
-                selectedPlaylist = if (tab != LibraryTab.PLAYLISTS) null else it.selectedPlaylist,
-                folderItems = if (tab != LibraryTab.BROWSE) emptyList() else it.folderItems,
                 selecting = false,
                 selectedKeys = emptySet(),
             )

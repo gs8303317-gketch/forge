@@ -15,6 +15,8 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Playback history screen (full list + clear)
 - Default playback speed setting
 - Remember last library tab (Video / Audio / Playlists / Browse)
+- Back stack: system back matches toolbar (folder → parent, settings/player → previous); exit confirm at root
+- Scroll position restored for folders and media lists after back / player
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -88,4 +90,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.10.0 (11)
+- **version:** 1.11.0 (12)

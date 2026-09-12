@@ -2,6 +2,7 @@ package com.gketch.forge.ui.settings
 
 import android.content.Intent
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -67,6 +68,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
+    BackHandler { onBack() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { ForgePlayerPrefsStore(context) }

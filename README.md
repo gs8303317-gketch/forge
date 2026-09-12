@@ -8,7 +8,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
 - Favorites with home section
-- Saved network streams (name + quick open; Streams tab + home section)
+- Saved network streams (name + quick open; under Browse)
 - Bookmarks per media (named or timestamp; jump from list)
 - Media info panel (resolution, duration, size, mime/container, tracks)
 - Subtitle delay (± ms) with cue overlay
@@ -20,7 +20,9 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Volume boost above 100% (LoudnessEnhancer, capped)
 - Control lock (gestures/controls off; tap zone to unlock)
 - Frame snapshot to Pictures/Forge
-- Search, filter (All / Videos / Audio), and sort (name / date / size / duration)
+- VLC-style home: Video | Audio | Playlists | Browse bottom navigation
+- Sort in a toolbar menu (name / date / size / duration); grid/list toggle
+- Browse: folder list, SAF folders, and saved streams
 - Recently played home section with clear history (+ optional resume wipe)
 - Resume dialog (Continue vs Start over) when position > a few seconds
 - Hold player surface for temporary 2× speed
@@ -34,14 +36,14 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Media3 player: play/pause, seek, next/prev, 0.5×–2× speed
 - Multi-band equalizer with presets (system Equalizer API)
 - A-B loop (set A / set B / clear)
-- Orientation lock while playing (auto / portrait / landscape)
+- Orientation lock while playing (auto follows sensor — portrait clips stay portrait; portrait / landscape locks)
 - Subtitles: embedded tracks + external `.srt`/`.vtt`, toggle, size/color/background/position
 - Audio track selection
 - Repeat (off / one / all) and shuffle
 - Double-tap seek (configurable ±5/10/15/30s)
 - Aspect ratio: Fit / Fill / Zoom
 - Sleep timer (15/30/45/60 min)
-- Player gestures: brightness (left), volume (right), horizontal seek
+- Player gestures: brightness (left 20%), volume (right 20%), horizontal seek (middle); controls stay tappable
 - Resume playback per media URI
 - Picture-in-Picture for video
 - MediaSession notification / lock-screen controls (background audio)
@@ -53,7 +55,8 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Add folders via Storage Access Framework and play those files
 - Backup / restore JSON (settings, playlists, favorites, streams, bookmarks)
 - Sleep timer fade-out and pause vs stop
-- Mini player on the library when something is playing
+- Mini player with Stop/X (clears playback, notification, and service)
+- Notification Stop action
 - Chapters list + jump when Media3 exposes timed metadata
 - Bass boost and Virtualizer toggles (audio session effects)
 
@@ -74,4 +77,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.7.0 (8)
+- **version:** 1.8.0 (9)

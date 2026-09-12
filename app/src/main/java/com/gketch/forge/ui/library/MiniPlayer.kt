@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -37,9 +37,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.gketch.forge.ui.player.rememberPlayerController
+import com.gketch.forge.ui.player.stopCompletely
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeGraphite
-import com.gketch.forge.ui.theme.ForgeMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -47,6 +47,7 @@ import kotlinx.coroutines.isActive
 fun MiniPlayerBar(
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    onStopped: () -> Unit = {},
 ) {
     val controller = rememberPlayerController()
     var visible by remember { mutableStateOf(false) }
@@ -98,8 +99,7 @@ fun MiniPlayerBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(ForgeGraphite)
             .clickable(onClick = onExpand),
@@ -113,7 +113,7 @@ fun MiniPlayerBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -122,7 +122,7 @@ fun MiniPlayerBar(
                 tint = ForgeAccent,
                 modifier = Modifier.size(22.dp),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = title,
                 color = Color.White,
@@ -141,6 +141,19 @@ fun MiniPlayerBar(
                     if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (playing) "Pause" else "Play",
                     tint = ForgeAccent,
+                )
+            }
+            IconButton(
+                onClick = {
+                    controller?.stopCompletely()
+                    visible = false
+                    onStopped()
+                },
+            ) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Stop",
+                    tint = Color.White,
                 )
             }
         }

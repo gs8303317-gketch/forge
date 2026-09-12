@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.gketch.forge.playback.PlaybackService
@@ -43,3 +44,8 @@ fun rememberPlayerController(): MediaController? {
     return controller
 }
 
+fun Player.stopCompletely() {
+    playWhenReady = false
+    stop()
+    clearMediaItems()
+}

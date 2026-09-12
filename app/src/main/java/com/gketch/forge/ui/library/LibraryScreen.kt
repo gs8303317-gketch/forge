@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -59,6 +60,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -69,7 +71,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -140,6 +144,8 @@ fun LibraryScreen(
     var m3uMessage by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var sortMenu by remember { mutableStateOf(false) }
+    var overflowMenu by remember { mutableStateOf(false) }
     val permitted = hasMediaPermission(context)
 
     val importM3uLauncher = rememberLauncherForActivityResult(
@@ -196,28 +202,31 @@ fun LibraryScreen(
     Scaffold(
         containerColor = ForgeBlack,
         snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            when (state.tab) {
-                LibraryTab.PLAYLISTS -> FloatingActionButton(
-                    onClick = { showCreatePlaylist = true },
-                    containerColor = ForgeAccent,
-                    contentColor = Color.Black,
-                ) {
-                    Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "New playlist")
-                }
-                LibraryTab.STREAMS -> FloatingActionButton(
-                    onClick = { showStreamDialog = true },
-                    containerColor = ForgeAccent,
-                    contentColor = Color.Black,
-                ) {
-                    Icon(Icons.Rounded.Link, contentDescription = "Add stream")
-                }
-                else -> FloatingActionButton(
-                    onClick = { showStreamDialog = true },
-                    containerColor = ForgeAccent,
-                    contentColor = Color.Black,
-                ) {
-                    Icon(Icons.Rounded.Link, contentDescription = "Open stream")
+        bottomBar = {
+            Column {
+                MiniPlayerBar(onExpand = onExpandPlayer)
+                NavigationBar(containerColor = ForgeGraphite) {
+                    val items = listOf(
+                        Triple(LibraryTab.VIDEO, Icons.Rounded.Movie, "Video"),
+                        Triple(LibraryTab.AUDIO, Icons.Rounded.AudioFile, "Audio"),
+                        Triple(LibraryTab.PLAYLISTS, Icons.Rounded.QueueMusic, "Playlists"),
+                        Triple(LibraryTab.BROWSE, Icons.Rounded.Folder, "Browse"),
+                    )
+                    items.forEach { (tab, icon, label) ->
+                        NavigationBarItem(
+                            selected = state.tab == tab,
+                            onClick = { viewModel.setTab(tab) },
+                            icon = { Icon(icon, contentDescription = label) },
+                            label = { Text(label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = ForgeAccent,
+                                selectedTextColor = ForgeAccent,
+                                indicatorColor = ForgeSurfaceVariant,
+                                unselectedIconColor = ForgeMuted,
+                                unselectedTextColor = ForgeMuted,
+                            ),
+                        )
+                    }
                 }
             }
         },
@@ -226,7 +235,7 @@ fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(ForgeBlack)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -255,50 +264,115 @@ fun LibraryScreen(
                             Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "Add to playlist", tint = ForgeAccent)
                         }
                     } else {
-                    Text(
-                        text = "Forge",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = ForgeAccent,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (state.tab == LibraryTab.LIBRARY) {
-                        IconButton(onClick = {
-                            viewModel.setLayout(
-                                if (state.layout == LibraryLayout.GRID) LibraryLayout.LIST
-                                else LibraryLayout.GRID,
-                            )
-                        }) {
-                            Icon(
-                                if (state.layout == LibraryLayout.GRID) Icons.Rounded.ViewList
-                                else Icons.Rounded.GridView,
-                                contentDescription = "Toggle layout",
-                                tint = ForgeMuted,
-                            )
+                        Text(
+                            text = "Forge",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = ForgeAccent,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (state.tab == LibraryTab.VIDEO ||
+                            state.tab == LibraryTab.AUDIO ||
+                            (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
+                        ) {
+                            IconButton(onClick = {
+                                viewModel.setLayout(
+                                    if (state.layout == LibraryLayout.GRID) LibraryLayout.LIST
+                                    else LibraryLayout.GRID,
+                                )
+                            }) {
+                                Icon(
+                                    if (state.layout == LibraryLayout.GRID) Icons.Rounded.ViewList
+                                    else Icons.Rounded.GridView,
+                                    contentDescription = "Toggle layout",
+                                    tint = ForgeMuted,
+                                )
+                            }
+                            Box {
+                                IconButton(onClick = { sortMenu = true }) {
+                                    Icon(Icons.Rounded.Sort, contentDescription = "Sort", tint = ForgeMuted)
+                                }
+                                DropdownMenu(
+                                    expanded = sortMenu,
+                                    onDismissRequest = { sortMenu = false },
+                                    containerColor = ForgeGraphite,
+                                ) {
+                                    LibrarySort.entries.forEach { sort ->
+                                        DropdownMenuItem(
+                                            text = { Text(sort.label, color = Color.White) },
+                                            onClick = {
+                                                viewModel.setSort(sort)
+                                                sortMenu = false
+                                            },
+                                            trailingIcon = {
+                                                if (state.sort == sort) {
+                                                    Icon(Icons.Rounded.Check, null, tint = ForgeAccent)
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
-                    }
-                    if (state.tab == LibraryTab.PLAYLISTS) {
-                        IconButton(onClick = {
-                            importM3uLauncher.launch(
-                                arrayOf(
-                                    "audio/x-mpegurl",
-                                    "application/vnd.apple.mpegurl",
-                                    "text/plain",
-                                    "*/*",
-                                ),
-                            )
-                        }) {
-                            Icon(Icons.Rounded.FileUpload, contentDescription = "Import M3U", tint = ForgeMuted)
+                        if (state.tab == LibraryTab.PLAYLISTS) {
+                            IconButton(onClick = { showCreatePlaylist = true }) {
+                                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "New playlist", tint = ForgeMuted)
+                            }
+                            IconButton(onClick = {
+                                importM3uLauncher.launch(
+                                    arrayOf(
+                                        "audio/x-mpegurl",
+                                        "application/vnd.apple.mpegurl",
+                                        "text/plain",
+                                        "*/*",
+                                    ),
+                                )
+                            }) {
+                                Icon(Icons.Rounded.FileUpload, contentDescription = "Import M3U", tint = ForgeMuted)
+                            }
                         }
-                    }
-                    IconButton(onClick = { showStreamDialog = true }) {
-                        Icon(Icons.Rounded.Link, contentDescription = "Open stream", tint = ForgeMuted)
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = ForgeMuted)
-                    }
+                        if (state.tab == LibraryTab.BROWSE && state.selectedFolder == null) {
+                            IconButton(onClick = { safTreeLauncher.launch(null) }) {
+                                Icon(Icons.Rounded.CreateNewFolder, contentDescription = "Add folder", tint = ForgeMuted)
+                            }
+                            IconButton(onClick = { showStreamDialog = true }) {
+                                Icon(Icons.Rounded.Link, contentDescription = "Add stream", tint = ForgeMuted)
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { overflowMenu = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = ForgeMuted)
+                            }
+                            DropdownMenu(
+                                expanded = overflowMenu,
+                                onDismissRequest = { overflowMenu = false },
+                                containerColor = ForgeGraphite,
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Open stream", color = Color.White) },
+                                    onClick = {
+                                        overflowMenu = false
+                                        showStreamDialog = true
+                                    },
+                                    leadingIcon = { Icon(Icons.Rounded.Link, null, tint = ForgeAccent) },
+                                )
+                                if (state.recent.isNotEmpty()) {
+                                    DropdownMenuItem(
+                                        text = { Text("Clear history", color = Color.White) },
+                                        onClick = {
+                                            overflowMenu = false
+                                            showClearHistory = true
+                                        },
+                                        leadingIcon = { Icon(Icons.Rounded.History, null, tint = ForgeAccent) },
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = ForgeMuted)
+                        }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = state.query,
                     onValueChange = viewModel::onQueryChange,
@@ -311,82 +385,8 @@ fun LibraryScreen(
                     shape = RoundedCornerShape(14.dp),
                     colors = fieldColors(),
                 )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.ALL,
-                        onClick = {
-                            viewModel.setTab(LibraryTab.LIBRARY)
-                            viewModel.setFilter(LibraryFilter.ALL)
-                        },
-                        label = { Text("All") },
-                        colors = filterColors(),
-                    )
-                    FilterChip(
-                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.VIDEO,
-                        onClick = {
-                            viewModel.setTab(LibraryTab.LIBRARY)
-                            viewModel.setFilter(LibraryFilter.VIDEO)
-                        },
-                        label = { Text("Videos") },
-                        colors = filterColors(),
-                    )
-                    FilterChip(
-                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.AUDIO,
-                        onClick = {
-                            viewModel.setTab(LibraryTab.LIBRARY)
-                            viewModel.setFilter(LibraryFilter.AUDIO)
-                        },
-                        label = { Text("Audio") },
-                        colors = filterColors(),
-                    )
-                    FilterChip(
-                        selected = state.tab == LibraryTab.FOLDERS,
-                        onClick = { viewModel.setTab(LibraryTab.FOLDERS) },
-                        label = { Text("Folders") },
-                        colors = filterColors(),
-                    )
-                    FilterChip(
-                        selected = state.tab == LibraryTab.PLAYLISTS,
-                        onClick = { viewModel.setTab(LibraryTab.PLAYLISTS) },
-                        label = { Text("Playlists") },
-                        colors = filterColors(),
-                    )
-                    FilterChip(
-                        selected = state.tab == LibraryTab.STREAMS,
-                        onClick = { viewModel.setTab(LibraryTab.STREAMS) },
-                        label = { Text("Streams") },
-                        colors = filterColors(),
-                    )
-                }
-                if (state.tab == LibraryTab.LIBRARY) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Rounded.Sort, null, tint = ForgeMuted, modifier = Modifier.size(18.dp))
-                        LibrarySort.entries.forEach { sort ->
-                            FilterChip(
-                                selected = state.sort == sort,
-                                onClick = { viewModel.setSort(sort) },
-                                label = { Text(sort.label) },
-                                colors = filterColors(),
-                            )
-                        }
-                        if (state.recent.isNotEmpty()) {
-                            TextButton(onClick = { showClearHistory = true }) {
-                                Text("Clear history", color = ForgeAccent)
-                            }
-                        }
-                    }
-                }
                 if (!permitted) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(6.dp))
                     TextButton(onClick = onRequestPermission) {
                         Text("Grant media access to scan this device", color = ForgeAccent)
                     }
@@ -395,7 +395,7 @@ fun LibraryScreen(
         },
     ) { padding ->
         when (state.tab) {
-            LibraryTab.LIBRARY -> LibraryBody(
+            LibraryTab.VIDEO, LibraryTab.AUDIO -> LibraryBody(
                 state = state,
                 permitted = permitted,
                 padding = padding,
@@ -405,7 +405,7 @@ fun LibraryScreen(
                 onToggleSelect = viewModel::toggleSelected,
                 onBeginSelect = viewModel::beginSelection,
             )
-            LibraryTab.FOLDERS -> FoldersBody(
+            LibraryTab.BROWSE -> FoldersBody(
                 state = state,
                 padding = padding,
                 onOpenFolder = viewModel::openFolder,
@@ -415,6 +415,9 @@ fun LibraryScreen(
                 onAddToPlaylist = { addToPlaylistItem = it },
                 onHideFolder = { hideFolder = it },
                 onAddSafFolder = { safTreeLauncher.launch(null) },
+                onAddStream = { showStreamDialog = true },
+                onRenameStream = { renameStream = it },
+                onDeleteStream = viewModel::removeStream,
                 onToggleSelect = viewModel::toggleSelected,
                 onBeginSelect = viewModel::beginSelection,
             )
@@ -445,13 +448,6 @@ fun LibraryScreen(
                     exportM3uLauncher.launch("$safe.m3u")
                 },
             )
-            LibraryTab.STREAMS -> StreamsBody(
-                state = state,
-                padding = padding,
-                onPlay = onPlay,
-                onRename = { renameStream = it },
-                onDelete = viewModel::removeStream,
-            )
         }
     }
 
@@ -469,7 +465,7 @@ fun LibraryScreen(
             onSaveOnly = { url, name ->
                 viewModel.saveStream(url, name)
                 showStreamDialog = false
-                viewModel.setTab(LibraryTab.STREAMS)
+                viewModel.setTab(LibraryTab.BROWSE)
             },
         )
     }
@@ -610,8 +606,11 @@ private fun LibraryBody(
     onToggleSelect: (ForgeMediaItem) -> Unit,
     onBeginSelect: (ForgeMediaItem) -> Unit,
 ) {
+    val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
+    val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
+    val sectionTitle = if (state.tab == LibraryTab.AUDIO) "Audio" else "Videos"
     when {
-        state.loading && permitted && state.filtered.isEmpty() && state.recent.isEmpty() && state.favorites.isEmpty() -> {
+        state.loading && permitted && state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ForgeAccent)
             }
@@ -621,7 +620,7 @@ private fun LibraryBody(
                 Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
             }
         }
-        state.filtered.isEmpty() && state.recent.isEmpty() && state.favorites.isEmpty() -> {
+        state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No media found", color = ForgeMuted)
@@ -634,31 +633,23 @@ private fun LibraryBody(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(140.dp),
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (state.favorites.isNotEmpty() && state.query.isBlank()) {
+                if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "fav-header") {
-                        FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                        FavoritesSection(items = kindFavs, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
-                if (state.savedStreams.isNotEmpty() && state.query.isBlank()) {
-                    item(span = { GridItemSpan(maxLineSpan) }, key = "streams-header") {
-                        SavedStreamsSection(
-                            streams = state.savedStreams,
-                            onPlay = { onPlay(listOf(it.toMediaItem()), 0) },
-                        )
-                    }
-                }
-                if (state.recent.isNotEmpty() && state.query.isBlank()) {
+                if (kindRecent.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "recent-header") {
-                        RecentSection(items = state.recent, onPlay = { onPlay(listOf(it), 0) })
+                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "lib-header") {
                     Text(
-                        text = "Library",
+                        text = sectionTitle,
                         style = MaterialTheme.typography.titleMedium,
                         color = ForgeMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
@@ -684,30 +675,22 @@ private fun LibraryBody(
         else -> {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (state.favorites.isNotEmpty() && state.query.isBlank()) {
+                if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(key = "fav-header") {
-                        FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                        FavoritesSection(items = kindFavs, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
-                if (state.savedStreams.isNotEmpty() && state.query.isBlank()) {
-                    item(key = "streams-header") {
-                        SavedStreamsSection(
-                            streams = state.savedStreams,
-                            onPlay = { onPlay(listOf(it.toMediaItem()), 0) },
-                        )
-                    }
-                }
-                if (state.recent.isNotEmpty() && state.query.isBlank()) {
+                if (kindRecent.isNotEmpty() && state.query.isBlank()) {
                     item(key = "recent-header") {
-                        RecentSection(items = state.recent, onPlay = { onPlay(listOf(it), 0) })
+                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
                 item(key = "lib-header") {
                     Text(
-                        text = "Library",
+                        text = sectionTitle,
                         style = MaterialTheme.typography.titleMedium,
                         color = ForgeMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
@@ -744,36 +727,67 @@ private fun FoldersBody(
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
     onHideFolder: (MediaFolder) -> Unit,
     onAddSafFolder: () -> Unit,
+    onAddStream: () -> Unit,
+    onRenameStream: (SavedStream) -> Unit,
+    onDeleteStream: (String) -> Unit,
     onToggleSelect: (ForgeMediaItem) -> Unit,
     onBeginSelect: (ForgeMediaItem) -> Unit,
 ) {
     val folder = state.selectedFolder
     if (folder == null) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
+        val q = state.query.trim().lowercase()
+        val streams = if (q.isEmpty()) state.savedStreams
+        else state.savedStreams.filter {
+            it.name.lowercase().contains(q) || it.url.lowercase().contains(q)
+        }
+        val folders = if (q.isEmpty()) state.folders
+        else state.folders.filter { it.name.lowercase().contains(q) }
+        LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                TextButton(onClick = onAddSafFolder) {
-                    Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Add folder", color = ForgeAccent)
+            item(key = "browse-actions") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onAddSafFolder) {
+                        Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add folder", color = ForgeAccent)
+                    }
+                    TextButton(onClick = onAddStream) {
+                        Icon(Icons.Rounded.Link, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Add stream", color = ForgeAccent)
+                    }
                 }
             }
-            if (state.folders.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("No folders found. Add a folder from storage.", color = ForgeMuted, modifier = Modifier.padding(24.dp))
+            if (streams.isNotEmpty()) {
+                item(key = "streams-label") {
+                    Text("Streams", color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
+                }
+                items(streams, key = { it.id }) { stream ->
+                    SavedStreamRow(
+                        stream = stream,
+                        onPlay = { onPlay(listOf(stream.toMediaItem()), 0) },
+                        onRename = { onRenameStream(stream) },
+                        onDelete = { onDeleteStream(stream.id) },
+                    )
                 }
             }
-            items(
-                count = state.folders.size,
-                key = { state.folders[it].bucketId },
-            ) { i ->
-                val f = state.folders[i]
-                FolderCard(
+            item(key = "folders-label") {
+                Text("Folders", color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
+            }
+            if (folders.isEmpty()) {
+                item(key = "folders-empty") {
+                    Text(
+                        "No folders found. Add a folder from storage.",
+                        color = ForgeMuted,
+                        modifier = Modifier.padding(vertical = 16.dp),
+                    )
+                }
+            }
+            items(folders, key = { it.bucketId }) { f ->
+                FolderRow(
                     folder = f,
                     onClick = { onOpenFolder(f) },
                     onLongClick = { onHideFolder(f) },
@@ -800,27 +814,51 @@ private fun FoldersBody(
                     Icon(Icons.Rounded.PlayArrow, contentDescription = "Play folder", tint = ForgeAccent)
                 }
             }
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(140.dp),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
-                    MediaGridCard(
-                        item = item,
-                        favorite = state.favoriteUris.contains(item.uri.toString()),
-                        selected = item.stableKey() in state.selectedKeys,
-                        selecting = state.selecting,
-                        onClick = {
-                            if (state.selecting) onToggleSelect(item)
-                            else onPlay(state.folderItems, index)
-                        },
-                        onLongClick = { onBeginSelect(item) },
-                        onToggleFavorite = { onToggleFavorite(item) },
-                        onAddToPlaylist = { onAddToPlaylist(item) },
-                    )
+            if (state.layout == LibraryLayout.LIST) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
+                        MediaRow(
+                            item = item,
+                            favorite = state.favoriteUris.contains(item.uri.toString()),
+                            selected = item.stableKey() in state.selectedKeys,
+                            selecting = state.selecting,
+                            onClick = {
+                                if (state.selecting) onToggleSelect(item)
+                                else onPlay(state.folderItems, index)
+                            },
+                            onLongClick = { onBeginSelect(item) },
+                            onToggleFavorite = { onToggleFavorite(item) },
+                            onAddToPlaylist = { onAddToPlaylist(item) },
+                        )
+                    }
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(140.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
+                        MediaGridCard(
+                            item = item,
+                            favorite = state.favoriteUris.contains(item.uri.toString()),
+                            selected = item.stableKey() in state.selectedKeys,
+                            selecting = state.selecting,
+                            onClick = {
+                                if (state.selecting) onToggleSelect(item)
+                                else onPlay(state.folderItems, index)
+                            },
+                            onLongClick = { onBeginSelect(item) },
+                            onToggleFavorite = { onToggleFavorite(item) },
+                            onAddToPlaylist = { onAddToPlaylist(item) },
+                        )
+                    }
                 }
             }
         }
@@ -1197,6 +1235,44 @@ private fun FolderCard(folder: MediaFolder, onClick: () -> Unit, onLongClick: ()
         Spacer(Modifier.height(8.dp))
         Text(folder.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FolderRow(folder: MediaFolder, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ForgeSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (folder.thumbUri != null) {
+                AsyncImage(
+                    model = folder.thumbUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(Icons.Rounded.Folder, null, tint = ForgeAccent)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 

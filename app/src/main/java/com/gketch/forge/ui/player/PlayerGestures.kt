@@ -50,6 +50,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class GestureKind { Seek, Volume, Brightness }
 
+private const val EDGE_FRACTION = 0.20f
+private const val DOUBLE_TAP_THIRD = 1f / 3f
+
 @Composable
 fun PlayerGestureLayer(
     durationMs: Long,
@@ -65,6 +68,9 @@ fun PlayerGestureLayer(
     currentVolume: () -> Float,
     currentBrightness: () -> Float,
     gesturesEnabled: Boolean = true,
+    controlsVisible: Boolean = false,
+    excludeTopPx: Float = 0f,
+    excludeBottomPx: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     val durationState = rememberUpdatedState(durationMs)
@@ -79,6 +85,9 @@ fun PlayerGestureLayer(
     val holdStart = rememberUpdatedState(onHoldSpeedStart)
     val holdEnd = rememberUpdatedState(onHoldSpeedEnd)
     val seekSecState = rememberUpdatedState(seekSeconds)
+    val controlsState = rememberUpdatedState(controlsVisible)
+    val topExclude = rememberUpdatedState(excludeTopPx)
+    val bottomExclude = rememberUpdatedState(excludeBottomPx)
 
     var kind by remember { mutableStateOf<GestureKind?>(null) }
     var previewMs by remember { mutableLongStateOf(0L) }
@@ -95,20 +104,43 @@ fun PlayerGestureLayer(
 
     val enabledState = rememberUpdatedState(gesturesEnabled)
 
+    fun inChrome(y: Float, height: Float): Boolean {
+        val top = topExclude.value
+        val bottom = bottomExclude.value
+        return y < top || y > height - bottom
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(gesturesEnabled) {
+            .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx) {
                 detectTapGestures(
                     onDoubleTap = { offset ->
                         if (!enabledState.value) return@detectTapGestures
-                        val back = offset.x < size.width / 2f
-                        doubleTapFlash = back
-                        doubleTapState.value(back)
+                        if (inChrome(offset.y, size.height.toFloat())) return@detectTapGestures
+                        val third = size.width * DOUBLE_TAP_THIRD
+                        when {
+                            offset.x < third -> {
+                                doubleTapFlash = true
+                                doubleTapState.value(true)
+                            }
+                            offset.x > size.width - third -> {
+                                doubleTapFlash = false
+                                doubleTapState.value(false)
+                            }
+                            else -> tapState.value()
+                        }
                     },
-                    onTap = { tapState.value() },
-                    onPress = {
+                    onTap = { offset ->
+                        if (inChrome(offset.y, size.height.toFloat()) && controlsState.value) return@detectTapGestures
+                        tapState.value()
+                    },
+                    onPress = { offset ->
                         if (!enabledState.value) {
+                            tryAwaitRelease()
+                            return@detectTapGestures
+                        }
+                        if (inChrome(offset.y, size.height.toFloat())) {
                             tryAwaitRelease()
                             return@detectTapGestures
                         }
@@ -128,11 +160,14 @@ fun PlayerGestureLayer(
                     },
                 )
             }
-            .pointerInput(gesturesEnabled) {
+            .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx) {
                 if (!gesturesEnabled) return@pointerInput
                 awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = true)
                     val start = down.position
+                    if (inChrome(start.y, size.height.toFloat())) {
+                        return@awaitEachGesture
+                    }
                     var total = Offset.Zero
                     var classified: GestureKind? = null
                     var startVol = 0f
@@ -140,23 +175,28 @@ fun PlayerGestureLayer(
                     var startPos = positionState.value
                     val dur = durationState.value.coerceAtLeast(0L)
                     val slop = 24f
+                    val leftEdge = size.width * EDGE_FRACTION
+                    val rightEdge = size.width * (1f - EDGE_FRACTION)
 
                     drag(down.id) { change ->
                         val delta = change.positionChange()
-                        change.consume()
                         total += delta
                         if (classified == null && (abs(total.x) > slop || abs(total.y) > slop)) {
-                            classified = if (abs(total.x) >= abs(total.y)) {
-                                GestureKind.Seek
-                            } else if (start.x < size.width / 2f) {
-                                GestureKind.Brightness
-                            } else {
-                                GestureKind.Volume
+                            classified = when {
+                                abs(total.x) >= abs(total.y) -> {
+                                    if (start.x in leftEdge..rightEdge) GestureKind.Seek else null
+                                }
+                                start.x <= leftEdge -> GestureKind.Brightness
+                                start.x >= rightEdge -> GestureKind.Volume
+                                else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, 1f)
                             startBrit = brightnessState.value().coerceIn(0f, 1f)
                             startPos = positionState.value
                             kind = classified
+                        }
+                        if (classified != null) {
+                            change.consume()
                         }
                         when (classified) {
                             GestureKind.Seek -> {
@@ -307,27 +347,27 @@ private fun SideHud(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black.copy(alpha = 0.55f))
-                .padding(12.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             icon()
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Box(
                 modifier = Modifier
-                    .width(8.dp)
-                    .height(120.dp)
+                    .width(6.dp)
+                    .height(88.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(ForgeGraphite),
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 Box(
                     modifier = Modifier
-                        .width(8.dp)
+                        .width(6.dp)
                         .fillMaxHeight(fraction.coerceIn(0f, 1f))
                         .background(ForgeAccent),
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 text = "${(fraction * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall,

@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class LibraryFilter { ALL, VIDEO, AUDIO }
-enum class LibraryTab { LIBRARY, FOLDERS, PLAYLISTS, STREAMS }
+enum class LibraryTab { VIDEO, AUDIO, PLAYLISTS, BROWSE }
 enum class LibraryLayout { GRID, LIST }
 
 data class LibraryUiState(
@@ -52,9 +52,9 @@ data class LibraryUiState(
     val hiddenBucketIds: Set<Long> = emptySet(),
     val safFolders: List<SafFolder> = emptyList(),
     val query: String = "",
-    val filter: LibraryFilter = LibraryFilter.ALL,
+    val filter: LibraryFilter = LibraryFilter.VIDEO,
     val sort: LibrarySort = LibrarySort.NAME,
-    val tab: LibraryTab = LibraryTab.LIBRARY,
+    val tab: LibraryTab = LibraryTab.VIDEO,
     val layout: LibraryLayout = LibraryLayout.GRID,
     val loading: Boolean = true,
     val error: String? = null,
@@ -194,11 +194,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setTab(tab: LibraryTab) {
         _state.update {
+            val filter = when (tab) {
+                LibraryTab.VIDEO -> LibraryFilter.VIDEO
+                LibraryTab.AUDIO -> LibraryFilter.AUDIO
+                else -> it.filter
+            }
             it.copy(
                 tab = tab,
-                selectedFolder = if (tab != LibraryTab.FOLDERS) null else it.selectedFolder,
+                filter = filter,
+                filtered = applyFilterAndSort(it.items, filter, it.sort),
+                selectedFolder = if (tab != LibraryTab.BROWSE) null else it.selectedFolder,
                 selectedPlaylist = if (tab != LibraryTab.PLAYLISTS) null else it.selectedPlaylist,
-                folderItems = if (tab != LibraryTab.FOLDERS) emptyList() else it.folderItems,
+                folderItems = if (tab != LibraryTab.BROWSE) emptyList() else it.folderItems,
                 selecting = false,
                 selectedKeys = emptySet(),
             )
@@ -217,7 +224,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 .ifEmpty { repo.loadFolderItems(folder.bucketId) }
                 .filter { it.bucketId !in _state.value.hiddenBucketIds }
             _state.update {
-                it.copy(selectedFolder = folder, folderItems = items, tab = LibraryTab.FOLDERS)
+                it.copy(selectedFolder = folder, folderItems = items, tab = LibraryTab.BROWSE)
             }
         }
     }
@@ -365,7 +372,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun selectedItems(): List<ForgeMediaItem> {
         val st = _state.value
         val pool = when {
-            st.tab == LibraryTab.FOLDERS && st.selectedFolder != null -> st.folderItems
+            st.tab == LibraryTab.BROWSE && st.selectedFolder != null -> st.folderItems
             else -> st.filtered
         }
         return pool.filter { it.stableKey() in st.selectedKeys }

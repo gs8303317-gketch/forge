@@ -24,4 +24,9 @@
     <string name="pip">Picture in picture</string>
     <string name="speed">Speed</string>
     <string name="skip_for_now">Skip for now</string>
+    <string name="playback_stop">Stop</string>
+    <string name="nav_video">Video</string>
+    <string name="nav_audio">Audio</string>
+    <string name="nav_playlists">Playlists</string>
+    <string name="nav_browse">Browse</string>
 </resources>

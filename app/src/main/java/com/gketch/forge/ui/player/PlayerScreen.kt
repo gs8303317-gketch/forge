@@ -19,6 +19,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,8 +28,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -92,6 +95,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -509,17 +513,15 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(hasVideo, current?.kind, inPip, orientationLock) {
+    LaunchedEffect(hasVideo, current?.kind, inPip, orientationLock, videoWidth, videoHeight) {
         val video = hasVideo || current?.kind == MediaKind.VIDEO
         if (!inPip) {
             activity?.requestedOrientation = when (orientationLock) {
                 OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                 OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                OrientationLock.AUTO -> if (video) {
-                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                }
+                // Auto follows the sensor / user rotation. Never force landscape —
+                // portrait clips stay portrait; landscape clips can rotate freely.
+                OrientationLock.AUTO -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
             }
         }
         activity?.updatePipParams(allowed = video && !inPip)
@@ -690,6 +692,9 @@ fun PlayerScreen(
                     AudioArtwork(title = current?.title.orEmpty())
                 }
 
+                val density = LocalDensity.current
+                val excludeTopPx = with(density) { if (showChrome) 56.dp.toPx() else 0f }
+                val excludeBottomPx = with(density) { if (showChrome) 108.dp.toPx() else 48.dp.toPx() }
                 if (!inPip) {
                     PlayerGestureLayer(
                         durationMs = durationMs,
@@ -738,6 +743,9 @@ fun PlayerScreen(
                         currentVolume = { musicVolumeFraction(context) },
                         currentBrightness = { windowBrightness(activity) },
                         gesturesEnabled = !controlsLocked,
+                        controlsVisible = showChrome,
+                        excludeTopPx = excludeTopPx,
+                        excludeBottomPx = excludeBottomPx,
                     )
                 }
 
@@ -796,7 +804,7 @@ fun PlayerScreen(
             }
         }
 
-        AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.TopCenter)) {
+        AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.TopCenter).zIndex(4f)) {
             PlayerTopBar(
                 title = current?.title ?: "Player",
                 showPip = isVideoSurface,
@@ -992,7 +1000,7 @@ fun PlayerScreen(
             }
         }
 
-        AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.BottomCenter)) {
+        AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.BottomCenter).zIndex(4f)) {
             PlayerControls(
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -1428,8 +1436,14 @@ private fun PlayerTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .statusBarsPadding()
+            .background(Color.Black.copy(alpha = 0.40f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = {},
+            )
+            .padding(horizontal = 2.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -1693,8 +1707,14 @@ private fun PlayerControls(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(ForgeGraphite.copy(alpha = 0.95f))
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .navigationBarsPadding()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = {},
+            )
+            .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
         val progress = if (durationMs > 0) {
             (if (scrubbing) scrubValue else positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1703,7 +1723,7 @@ private fun PlayerControls(
             value = progress,
             onValueChange = onScrub,
             onValueChangeFinished = onScrubEnd,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().height(22.dp),
             colors = SliderDefaults.colors(
                 thumbColor = ForgeAccent,
                 activeTrackColor = ForgeAccent,
@@ -1725,7 +1745,6 @@ private fun PlayerControls(
                 color = ForgeMuted,
             )
         }
-        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1736,7 +1755,7 @@ private fun PlayerControls(
                     Icons.Rounded.Shuffle,
                     contentDescription = "Shuffle",
                     tint = if (shuffleOn) ForgeAccent else Color.White,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
             IconButton(onClick = onPrev, enabled = canPrev) {
@@ -1744,13 +1763,13 @@ private fun PlayerControls(
                     Icons.Rounded.SkipPrevious,
                     contentDescription = "Previous",
                     tint = if (canPrev) Color.White else ForgeMuted,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
             IconButton(
                 onClick = onPlayPause,
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .background(ForgeAccent),
             ) {
@@ -1758,7 +1777,7 @@ private fun PlayerControls(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = Color.Black,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(26.dp),
                 )
             }
             IconButton(onClick = onNext, enabled = canNext) {
@@ -1766,7 +1785,7 @@ private fun PlayerControls(
                     Icons.Rounded.SkipNext,
                     contentDescription = "Next",
                     tint = if (canNext) Color.White else ForgeMuted,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
             IconButton(onClick = onCycleRepeat) {
@@ -1777,7 +1796,7 @@ private fun PlayerControls(
                     },
                     contentDescription = "Repeat",
                     tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White else ForgeAccent,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="forge_black">#FF0A0A0B</color>
+    <color name="forge_graphite">#FF1A1B1E</color>
+    <color name="forge_surface">#FF121214</color>
+    <color name="forge_accent">#FFFF6B35</color>
+    <color name="forge_accent_soft">#FFFF8F66</color>
+    <color name="forge_on_dark">#FFF5F5F7</color>
+    <color name="ic_launcher_background">#0A0A0B</color>
+</resources>

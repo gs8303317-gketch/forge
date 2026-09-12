@@ -24,20 +24,51 @@ class MediaRepository(private val context: Context) {
         (videos + audio).sortedByDescending { it.dateAdded }
     }
 
+    suspend fun loadFolders(): List<MediaFolder> = withContext(Dispatchers.IO) {
+        val items = try {
+            loadLibrary()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        items
+            .groupBy { it.bucketId to (it.bucketName.ifBlank { "Unknown" }) }
+            .map { (key, group) ->
+                val (bucketId, name) = key
+                MediaFolder(
+                    bucketId = bucketId,
+                    name = name,
+                    itemCount = group.size,
+                    thumbUri = group.firstOrNull { it.albumArtUri != null }?.albumArtUri
+                        ?: group.firstOrNull()?.uri,
+                    kindHint = if (group.any { it.isVideo }) MediaKind.VIDEO else MediaKind.AUDIO,
+                )
+            }
+            .sortedBy { it.name.lowercase() }
+    }
+
+    suspend fun loadFolderItems(bucketId: Long): List<ForgeMediaItem> = withContext(Dispatchers.IO) {
+        loadLibrary().filter { it.bucketId == bucketId }.sortedBy { it.title.lowercase() }
+    }
+
     private fun queryVideos(query: String): List<ForgeMediaItem> {
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.MIME_TYPE,
             MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.BUCKET_ID,
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection += MediaStore.Video.Media.RELATIVE_PATH
+        }
         val selection: String?
         val args: Array<String>?
         if (query.isBlank()) {
@@ -50,7 +81,7 @@ class MediaRepository(private val context: Context) {
         val items = mutableListOf<ForgeMediaItem>()
         context.contentResolver.query(
             collection,
-            projection,
+            projection.toTypedArray(),
             selection,
             args,
             "${MediaStore.Video.Media.DATE_ADDED} DESC",
@@ -61,6 +92,11 @@ class MediaRepository(private val context: Context) {
             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val bucketIdCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
+            val bucketNameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val pathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+            } else -1
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val uri = ContentUris.withAppendedId(collection, id)
@@ -74,6 +110,9 @@ class MediaRepository(private val context: Context) {
                     kind = MediaKind.VIDEO,
                     dateAdded = cursor.getLong(dateCol),
                     albumArtUri = uri,
+                    bucketId = cursor.getLong(bucketIdCol),
+                    bucketName = cursor.getString(bucketNameCol) ?: "Videos",
+                    relativePath = if (pathCol >= 0) cursor.getString(pathCol).orEmpty() else "",
                 )
             }
         }
@@ -86,7 +125,7 @@ class MediaRepository(private val context: Context) {
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.DURATION,
@@ -94,7 +133,12 @@ class MediaRepository(private val context: Context) {
             MediaStore.Audio.Media.MIME_TYPE,
             MediaStore.Audio.Media.DATE_ADDED,
             MediaStore.Audio.Media.ALBUM_ID,
+            MediaStore.Audio.Media.BUCKET_ID,
+            MediaStore.Audio.Media.BUCKET_DISPLAY_NAME,
         )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection += MediaStore.Audio.Media.RELATIVE_PATH
+        }
         val selectionParts = mutableListOf("${MediaStore.Audio.Media.IS_MUSIC} != 0")
         val args = mutableListOf<String>()
         if (query.isNotBlank()) {
@@ -104,7 +148,7 @@ class MediaRepository(private val context: Context) {
         val items = mutableListOf<ForgeMediaItem>()
         context.contentResolver.query(
             collection,
-            projection,
+            projection.toTypedArray(),
             selectionParts.joinToString(" AND "),
             args.toTypedArray().ifEmpty { null },
             "${MediaStore.Audio.Media.DATE_ADDED} DESC",
@@ -116,6 +160,11 @@ class MediaRepository(private val context: Context) {
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val bucketIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.BUCKET_ID)
+            val bucketNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.BUCKET_DISPLAY_NAME)
+            val pathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            } else -1
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val uri = ContentUris.withAppendedId(collection, id)
@@ -133,6 +182,9 @@ class MediaRepository(private val context: Context) {
                     kind = MediaKind.AUDIO,
                     dateAdded = cursor.getLong(dateCol),
                     albumArtUri = art,
+                    bucketId = cursor.getLong(bucketIdCol),
+                    bucketName = cursor.getString(bucketNameCol) ?: "Music",
+                    relativePath = if (pathCol >= 0) cursor.getString(pathCol).orEmpty() else "",
                 )
             }
         }

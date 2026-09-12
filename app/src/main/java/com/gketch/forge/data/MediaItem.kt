@@ -14,9 +14,22 @@ data class ForgeMediaItem(
     val kind: MediaKind,
     val dateAdded: Long,
     val albumArtUri: Uri? = null,
+    val bucketId: Long = 0L,
+    val bucketName: String = "",
+    val relativePath: String = "",
 ) {
     val isVideo: Boolean get() = kind == MediaKind.VIDEO
+
+    fun stableKey(): String = "${kind.name}-$id-${uri}"
 }
+
+data class MediaFolder(
+    val bucketId: Long,
+    val name: String,
+    val itemCount: Int,
+    val thumbUri: Uri?,
+    val kindHint: MediaKind,
+)
 
 private val AUDIO_EXTENSIONS = setOf(
     "mp3", "m4a", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "aiff",

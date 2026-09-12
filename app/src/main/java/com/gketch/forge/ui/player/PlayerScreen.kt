@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +50,9 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.Loop
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +66,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -103,6 +109,7 @@ import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.playback.ForgeEqualizer
 import com.gketch.forge.ui.library.formatDuration
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
@@ -122,7 +129,13 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Equalizer, Orientation, AbLoop }
+
+private enum class OrientationLock(val label: String) {
+    AUTO("Auto"),
+    PORTRAIT("Portrait"),
+    LANDSCAPE("Landscape"),
+}
 
 private data class TrackChoice(
     val groupIndex: Int,
@@ -171,6 +184,13 @@ fun PlayerScreen(
     var sleepRemainingSec by remember { mutableIntStateOf(0) }
     var moreMenu by remember { mutableStateOf(false) }
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+    var orientationLock by remember { mutableStateOf(OrientationLock.AUTO) }
+    var abPointA by remember { mutableStateOf<Long?>(null) }
+    var abPointB by remember { mutableStateOf<Long?>(null) }
+    var abLoopEnabled by remember { mutableStateOf(false) }
+    var eqEnabled by remember { mutableStateOf(ForgeEqualizer.enabled) }
+    var eqBands by remember { mutableStateOf(ForgeEqualizer.bands()) }
+    var eqPreset by remember { mutableStateOf(ForgeEqualizer.presetName) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -236,6 +256,9 @@ fun PlayerScreen(
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    abPointA = null
+                    abPointB = null
+                    abLoopEnabled = false
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in queue.indices) {
                         index = newIndex
@@ -339,24 +362,44 @@ fun PlayerScreen(
         queue.getOrNull(startIndex)?.let { recentStore.record(it) }
     }
 
-    LaunchedEffect(hasVideo, current?.kind, inPip) {
+    LaunchedEffect(hasVideo, current?.kind, inPip, orientationLock) {
         val video = hasVideo || current?.kind == MediaKind.VIDEO
-        if (video && !inPip) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else if (!video) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (!inPip) {
+            activity?.requestedOrientation = when (orientationLock) {
+                OrientationLock.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                OrientationLock.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                OrientationLock.AUTO -> if (video) {
+                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                }
+            }
         }
         activity?.updatePipParams(allowed = video && !inPip)
     }
 
-    LaunchedEffect(controller) {
+    LaunchedEffect(controller, abLoopEnabled, abPointA, abPointB) {
         val player = controller ?: return@LaunchedEffect
         while (isActive) {
             if (!scrubbing) {
                 positionMs = player.currentPosition.coerceAtLeast(0L)
                 durationMs = player.duration.coerceAtLeast(0L).takeIf { it > 0 } ?: 0L
+                val a = abPointA
+                val b = abPointB
+                if (abLoopEnabled && a != null && b != null && b > a && positionMs >= b) {
+                    player.seekTo(a)
+                    positionMs = a
+                }
             }
-            delay(200)
+            delay(100)
+        }
+    }
+
+    LaunchedEffect(panel) {
+        if (panel == Panel.Equalizer) {
+            eqEnabled = ForgeEqualizer.enabled
+            eqBands = ForgeEqualizer.bands()
+            eqPreset = ForgeEqualizer.presetName
         }
     }
 
@@ -494,6 +537,11 @@ fun PlayerScreen(
                 showPip = isVideoSurface,
                 speed = speed,
                 sleepLabel = sleepRemainingSec.takeIf { it > 0 }?.let { formatSleep(it) },
+                abLabel = when {
+                    abLoopEnabled && abPointA != null && abPointB != null -> "A-B"
+                    abPointA != null -> "A set"
+                    else -> null
+                },
                 moreExpanded = moreMenu,
                 onBack = {
                     val player = controller
@@ -522,6 +570,18 @@ fun PlayerScreen(
                 onSleep = {
                     moreMenu = false
                     panel = Panel.Sleep
+                },
+                onEqualizer = {
+                    moreMenu = false
+                    panel = Panel.Equalizer
+                },
+                onOrientation = {
+                    moreMenu = false
+                    panel = Panel.Orientation
+                },
+                onAbLoop = {
+                    moreMenu = false
+                    panel = Panel.AbLoop
                 },
                 showAspect = isVideoSurface,
             )
@@ -639,6 +699,92 @@ fun PlayerScreen(
             )
         }
 
+        if (showChrome && panel == Panel.Orientation) {
+            ChipRow(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp),
+            ) {
+                OrientationLock.entries.forEach { mode ->
+                    FilterChip(
+                        selected = orientationLock == mode,
+                        onClick = {
+                            orientationLock = mode
+                            panel = Panel.None
+                        },
+                        label = { Text(mode.label) },
+                        colors = chipColors(),
+                    )
+                }
+            }
+        }
+
+        if (panel == Panel.AbLoop && showChrome) {
+            AbLoopDialog(
+                pointA = abPointA,
+                pointB = abPointB,
+                enabled = abLoopEnabled,
+                positionMs = positionMs,
+                onDismiss = { panel = Panel.None },
+                onSetA = {
+                    abPointA = positionMs
+                    val b = abPointB
+                    if (b != null && b <= positionMs) abPointB = null
+                    abLoopEnabled = abPointA != null && abPointB != null
+                },
+                onSetB = {
+                    val a = abPointA
+                    if (a != null && positionMs > a) {
+                        abPointB = positionMs
+                        abLoopEnabled = true
+                    } else if (a == null) {
+                        abPointA = 0L
+                        abPointB = positionMs
+                        abLoopEnabled = true
+                    }
+                },
+                onToggle = { on ->
+                    abLoopEnabled = on && abPointA != null && abPointB != null
+                },
+                onClear = {
+                    abPointA = null
+                    abPointB = null
+                    abLoopEnabled = false
+                },
+                onSeekA = {
+                    abPointA?.let {
+                        controller?.seekTo(it)
+                        positionMs = it
+                    }
+                },
+            )
+        }
+
+        if (panel == Panel.Equalizer && showChrome) {
+            EqualizerDialog(
+                enabled = eqEnabled,
+                bands = eqBands,
+                presetName = eqPreset,
+                onDismiss = { panel = Panel.None },
+                onToggle = { on ->
+                    ForgeEqualizer.setEnabled(on)
+                    eqEnabled = on
+                },
+                onBand = { index, value ->
+                    ForgeEqualizer.setBandNormalized(index, value)
+                    eqBands = ForgeEqualizer.bands()
+                    eqPreset = ForgeEqualizer.presetName
+                    eqEnabled = true
+                },
+                onPreset = { preset ->
+                    ForgeEqualizer.applyPreset(preset)
+                    eqEnabled = true
+                    eqBands = ForgeEqualizer.bands()
+                    eqPreset = ForgeEqualizer.presetName
+                },
+            )
+        }
+
         if (panel == Panel.Subtitle && showChrome) {
             SubtitleDialog(
                 tracks = textTracks,
@@ -706,6 +852,7 @@ private fun PlayerTopBar(
     showAspect: Boolean,
     speed: Float,
     sleepLabel: String?,
+    abLabel: String?,
     moreExpanded: Boolean,
     onBack: () -> Unit,
     onPip: () -> Unit,
@@ -716,6 +863,9 @@ private fun PlayerTopBar(
     onAudio: () -> Unit,
     onAspect: () -> Unit,
     onSleep: () -> Unit,
+    onEqualizer: () -> Unit,
+    onOrientation: () -> Unit,
+    onAbLoop: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -735,12 +885,21 @@ private fun PlayerTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (sleepLabel != null) {
-                Text(
-                    text = "Sleep · $sleepLabel",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = ForgeAccent,
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sleepLabel != null) {
+                    Text(
+                        text = "Sleep · $sleepLabel",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ForgeAccent,
+                    )
+                }
+                if (abLabel != null) {
+                    Text(
+                        text = abLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ForgeAccent,
+                    )
+                }
             }
         }
         IconButton(onClick = onSpeed) {
@@ -798,6 +957,27 @@ private fun PlayerTopBar(
                     onClick = onSleep,
                     leadingIcon = {
                         Icon(Icons.Rounded.Timer, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Equalizer", color = Color.White) },
+                    onClick = onEqualizer,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Equalizer, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("A-B loop", color = Color.White) },
+                    onClick = onAbLoop,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Loop, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Orientation", color = Color.White) },
+                    onClick = onOrientation,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ScreenRotation, null, tint = ForgeAccent)
                     },
                 )
             }
@@ -1062,6 +1242,168 @@ private fun AudioDialog(
                                 .clickable { onSelect(track) }
                                 .padding(vertical = 10.dp),
                         )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
+@Composable
+private fun AbLoopDialog(
+    pointA: Long?,
+    pointB: Long?,
+    enabled: Boolean,
+    positionMs: Long,
+    onDismiss: () -> Unit,
+    onSetA: () -> Unit,
+    onSetB: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+    onClear: () -> Unit,
+    onSeekA: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("A-B loop", color = Color.White) },
+        text = {
+            Column {
+                Text(
+                    text = "Current · ${formatDuration(positionMs)}",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "A · ${pointA?.let { formatDuration(it) } ?: "—"}${if (pointB != null) "   B · ${formatDuration(pointB)}" else ""}",
+                    color = Color.White,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = pointA != null,
+                        onClick = onSetA,
+                        label = { Text("Set A") },
+                        colors = chipColors(),
+                    )
+                    FilterChip(
+                        selected = pointB != null,
+                        onClick = onSetB,
+                        label = { Text("Set B") },
+                        colors = chipColors(),
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = onClear,
+                        label = { Text("Clear") },
+                        colors = chipColors(),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Loop segment", color = Color.White)
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = ForgeAccent,
+                            checkedThumbColor = Color.Black,
+                        ),
+                    )
+                }
+                if (pointA != null) {
+                    TextButton(onClick = onSeekA) {
+                        Text("Jump to A", color = ForgeAccent)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
+@Composable
+private fun EqualizerDialog(
+    enabled: Boolean,
+    bands: List<com.gketch.forge.playback.EqBand>,
+    presetName: String,
+    onDismiss: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+    onBand: (Int, Float) -> Unit,
+    onPreset: (com.gketch.forge.playback.EqPreset) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Equalizer", color = Color.White) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Enabled", color = Color.White)
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = ForgeAccent,
+                            checkedThumbColor = Color.Black,
+                        ),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Preset · $presetName", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ForgeEqualizer.presets.forEach { preset ->
+                        FilterChip(
+                            selected = presetName == preset.name,
+                            onClick = { onPreset(preset) },
+                            label = { Text(preset.name) },
+                            colors = chipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                if (bands.isEmpty()) {
+                    Text(
+                        "Equalizer attaches after playback starts.",
+                        color = ForgeMuted,
+                    )
+                } else {
+                    bands.forEach { band ->
+                        val value = ForgeEqualizer.bandNormalized(band)
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text(
+                                text = ForgeEqualizer.frequencyLabel(band.frequencyMilliHz),
+                                color = ForgeMuted,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Slider(
+                                value = value,
+                                onValueChange = { onBand(band.index, it) },
+                                valueRange = -1f..1f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = ForgeAccent,
+                                    activeTrackColor = ForgeAccent,
+                                    inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
+                                ),
+                            )
+                        }
                     }
                 }
             }

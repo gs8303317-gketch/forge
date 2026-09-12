@@ -3,6 +3,8 @@ package com.gketch.forge.ui.library
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,22 +20,41 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
+import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -65,6 +86,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gketch.forge.data.ForgeMediaItem
+import com.gketch.forge.data.ForgePlaylist
+import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.data.isPlayableStreamUrl
@@ -87,6 +110,9 @@ fun LibraryScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var renamePlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
+    var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
     val permitted = hasMediaPermission(context)
 
     LaunchedEffect(permitted) {
@@ -96,12 +122,21 @@ fun LibraryScreen(
     Scaffold(
         containerColor = ForgeBlack,
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showStreamDialog = true },
-                containerColor = ForgeAccent,
-                contentColor = Color.Black,
-            ) {
-                Icon(Icons.Rounded.Link, contentDescription = "Open stream")
+            when (state.tab) {
+                LibraryTab.PLAYLISTS -> FloatingActionButton(
+                    onClick = { showCreatePlaylist = true },
+                    containerColor = ForgeAccent,
+                    contentColor = Color.Black,
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "New playlist")
+                }
+                else -> FloatingActionButton(
+                    onClick = { showStreamDialog = true },
+                    containerColor = ForgeAccent,
+                    contentColor = Color.Black,
+                ) {
+                    Icon(Icons.Rounded.Link, contentDescription = "Open stream")
+                }
             }
         },
         topBar = {
@@ -121,6 +156,21 @@ fun LibraryScreen(
                         color = ForgeAccent,
                         modifier = Modifier.weight(1f),
                     )
+                    if (state.tab == LibraryTab.LIBRARY) {
+                        IconButton(onClick = {
+                            viewModel.setLayout(
+                                if (state.layout == LibraryLayout.GRID) LibraryLayout.LIST
+                                else LibraryLayout.GRID,
+                            )
+                        }) {
+                            Icon(
+                                if (state.layout == LibraryLayout.GRID) Icons.Rounded.ViewList
+                                else Icons.Rounded.GridView,
+                                contentDescription = "Toggle layout",
+                                tint = ForgeMuted,
+                            )
+                        }
+                    }
                     IconButton(onClick = { showStreamDialog = true }) {
                         Icon(Icons.Rounded.Link, contentDescription = "Open stream", tint = ForgeMuted)
                     }
@@ -139,34 +189,50 @@ fun LibraryScreen(
                         Icon(Icons.Rounded.Search, contentDescription = null, tint = ForgeMuted)
                     },
                     shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = ForgeAccent,
-                        unfocusedBorderColor = ForgeSurfaceVariant,
-                        focusedContainerColor = ForgeGraphite,
-                        unfocusedContainerColor = ForgeGraphite,
-                        cursorColor = ForgeAccent,
-                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    ),
+                    colors = fieldColors(),
                 )
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     FilterChip(
-                        selected = state.filter == LibraryFilter.ALL,
-                        onClick = { viewModel.setFilter(LibraryFilter.ALL) },
+                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.ALL,
+                        onClick = {
+                            viewModel.setTab(LibraryTab.LIBRARY)
+                            viewModel.setFilter(LibraryFilter.ALL)
+                        },
                         label = { Text("All") },
                         colors = filterColors(),
                     )
                     FilterChip(
-                        selected = state.filter == LibraryFilter.VIDEO,
-                        onClick = { viewModel.setFilter(LibraryFilter.VIDEO) },
+                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.VIDEO,
+                        onClick = {
+                            viewModel.setTab(LibraryTab.LIBRARY)
+                            viewModel.setFilter(LibraryFilter.VIDEO)
+                        },
                         label = { Text("Videos") },
                         colors = filterColors(),
                     )
                     FilterChip(
-                        selected = state.filter == LibraryFilter.AUDIO,
-                        onClick = { viewModel.setFilter(LibraryFilter.AUDIO) },
+                        selected = state.tab == LibraryTab.LIBRARY && state.filter == LibraryFilter.AUDIO,
+                        onClick = {
+                            viewModel.setTab(LibraryTab.LIBRARY)
+                            viewModel.setFilter(LibraryFilter.AUDIO)
+                        },
                         label = { Text("Audio") },
+                        colors = filterColors(),
+                    )
+                    FilterChip(
+                        selected = state.tab == LibraryTab.FOLDERS,
+                        onClick = { viewModel.setTab(LibraryTab.FOLDERS) },
+                        label = { Text("Folders") },
+                        colors = filterColors(),
+                    )
+                    FilterChip(
+                        selected = state.tab == LibraryTab.PLAYLISTS,
+                        onClick = { viewModel.setTab(LibraryTab.PLAYLISTS) },
+                        label = { Text("Playlists") },
                         colors = filterColors(),
                     )
                 }
@@ -179,75 +245,35 @@ fun LibraryScreen(
             }
         },
     ) { padding ->
-        when {
-            state.loading && permitted && state.filtered.isEmpty() && state.recent.isEmpty() -> {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = ForgeAccent)
-                }
-            }
-            state.error != null && permitted && state.filtered.isEmpty() -> {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
-                }
-            }
-            state.filtered.isEmpty() && state.recent.isEmpty() -> {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No media found", color = ForgeMuted)
-                        Spacer(Modifier.height(8.dp))
-                        Text("Open a network stream with the link button", color = ForgeMuted)
-                    }
-                }
-            }
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (state.recent.isNotEmpty() && state.query.isBlank()) {
-                        item(key = "recent-header") {
-                            RecentSection(
-                                items = state.recent,
-                                onPlay = { item -> onPlay(listOf(item), 0) },
-                            )
-                        }
-                        item(key = "library-header") {
-                            Text(
-                                text = "Library",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = ForgeMuted,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-                            )
-                        }
-                    }
-                    if (state.filtered.isEmpty() && state.recent.isNotEmpty()) {
-                        item(key = "empty-library") {
-                            Text(
-                                text = if (permitted) "No matching library items" else "Grant access to browse the library",
-                                color = ForgeMuted,
-                                modifier = Modifier.padding(vertical = 12.dp),
-                            )
-                        }
-                    }
-                    itemsIndexed(state.filtered, key = { _, item -> "${item.kind}-${item.id}" }) { index, item ->
-                        MediaRow(item = item) {
-                            onPlay(state.filtered, index)
-                        }
-                    }
-                }
-            }
+        when (state.tab) {
+            LibraryTab.LIBRARY -> LibraryBody(
+                state = state,
+                permitted = permitted,
+                padding = padding,
+                onPlay = onPlay,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onAddToPlaylist = { addToPlaylistItem = it },
+            )
+            LibraryTab.FOLDERS -> FoldersBody(
+                state = state,
+                padding = padding,
+                onOpenFolder = viewModel::openFolder,
+                onCloseFolder = viewModel::closeFolder,
+                onPlay = onPlay,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onAddToPlaylist = { addToPlaylistItem = it },
+            )
+            LibraryTab.PLAYLISTS -> PlaylistsBody(
+                state = state,
+                padding = padding,
+                onOpen = viewModel::openPlaylist,
+                onClose = viewModel::closePlaylist,
+                onPlay = onPlay,
+                onRename = { renamePlaylist = it },
+                onDelete = viewModel::deletePlaylist,
+                onRemoveItem = viewModel::removeFromPlaylist,
+                onToggleFavorite = viewModel::toggleFavorite,
+            )
         }
     }
 
@@ -262,6 +288,324 @@ fun LibraryScreen(
             },
         )
     }
+    if (showCreatePlaylist) {
+        NameDialog(
+            title = "New playlist",
+            initial = "",
+            confirmLabel = "Create",
+            onDismiss = { showCreatePlaylist = false },
+            onConfirm = {
+                viewModel.createPlaylist(it)
+                showCreatePlaylist = false
+            },
+        )
+    }
+    renamePlaylist?.let { pl ->
+        NameDialog(
+            title = "Rename playlist",
+            initial = pl.name,
+            confirmLabel = "Save",
+            onDismiss = { renamePlaylist = null },
+            onConfirm = {
+                viewModel.renamePlaylist(pl.id, it)
+                renamePlaylist = null
+            },
+        )
+    }
+    addToPlaylistItem?.let { item ->
+        AddToPlaylistDialog(
+            playlists = state.playlists,
+            onDismiss = { addToPlaylistItem = null },
+            onPick = { id ->
+                viewModel.addToPlaylist(id, item)
+                addToPlaylistItem = null
+            },
+            onCreate = {
+                showCreatePlaylist = true
+                addToPlaylistItem = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun LibraryBody(
+    state: LibraryUiState,
+    permitted: Boolean,
+    padding: PaddingValues,
+    onPlay: (List<ForgeMediaItem>, Int) -> Unit,
+    onToggleFavorite: (ForgeMediaItem) -> Unit,
+    onAddToPlaylist: (ForgeMediaItem) -> Unit,
+) {
+    when {
+        state.loading && permitted && state.filtered.isEmpty() && state.recent.isEmpty() && state.favorites.isEmpty() -> {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = ForgeAccent)
+            }
+        }
+        state.error != null && permitted && state.filtered.isEmpty() -> {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        state.filtered.isEmpty() && state.recent.isEmpty() && state.favorites.isEmpty() -> {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No media found", color = ForgeMuted)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Open a network stream with the link button", color = ForgeMuted)
+                }
+            }
+        }
+        state.layout == LibraryLayout.GRID -> {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(140.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (state.favorites.isNotEmpty() && state.query.isBlank()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "fav-header") {
+                        FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (state.recent.isNotEmpty() && state.query.isBlank()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "recent-header") {
+                        RecentSection(items = state.recent, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                item(span = { GridItemSpan(maxLineSpan) }, key = "lib-header") {
+                    Text(
+                        text = "Library",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = ForgeMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                    )
+                }
+                itemsIndexed(state.filtered, key = { _, item -> item.stableKey() }) { index, item ->
+                    MediaGridCard(
+                        item = item,
+                        favorite = state.favoriteUris.contains(item.uri.toString()),
+                        onClick = { onPlay(state.filtered, index) },
+                        onToggleFavorite = { onToggleFavorite(item) },
+                        onAddToPlaylist = { onAddToPlaylist(item) },
+                    )
+                }
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (state.favorites.isNotEmpty() && state.query.isBlank()) {
+                    item(key = "fav-header") {
+                        FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (state.recent.isNotEmpty() && state.query.isBlank()) {
+                    item(key = "recent-header") {
+                        RecentSection(items = state.recent, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                item(key = "lib-header") {
+                    Text(
+                        text = "Library",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = ForgeMuted,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                    )
+                }
+                itemsIndexed(state.filtered, key = { _, item -> item.stableKey() }) { index, item ->
+                    MediaRow(
+                        item = item,
+                        favorite = state.favoriteUris.contains(item.uri.toString()),
+                        onClick = { onPlay(state.filtered, index) },
+                        onToggleFavorite = { onToggleFavorite(item) },
+                        onAddToPlaylist = { onAddToPlaylist(item) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FoldersBody(
+    state: LibraryUiState,
+    padding: PaddingValues,
+    onOpenFolder: (MediaFolder) -> Unit,
+    onCloseFolder: () -> Unit,
+    onPlay: (List<ForgeMediaItem>, Int) -> Unit,
+    onToggleFavorite: (ForgeMediaItem) -> Unit,
+    onAddToPlaylist: (ForgeMediaItem) -> Unit,
+) {
+    val folder = state.selectedFolder
+    if (folder == null) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(150.dp),
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (state.folders.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text("No folders found", color = ForgeMuted, modifier = Modifier.padding(24.dp))
+                }
+            }
+            items(
+                count = state.folders.size,
+                key = { state.folders[it].bucketId },
+            ) { i ->
+                val f = state.folders[i]
+                FolderCard(folder = f, onClick = { onOpenFolder(f) })
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                IconButton(onClick = onCloseFolder) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = Color.White)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(
+                    onClick = { if (state.folderItems.isNotEmpty()) onPlay(state.folderItems, 0) },
+                    enabled = state.folderItems.isNotEmpty(),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Play folder", tint = ForgeAccent)
+                }
+            }
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(140.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
+                    MediaGridCard(
+                        item = item,
+                        favorite = state.favoriteUris.contains(item.uri.toString()),
+                        onClick = { onPlay(state.folderItems, index) },
+                        onToggleFavorite = { onToggleFavorite(item) },
+                        onAddToPlaylist = { onAddToPlaylist(item) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistsBody(
+    state: LibraryUiState,
+    padding: PaddingValues,
+    onOpen: (ForgePlaylist) -> Unit,
+    onClose: () -> Unit,
+    onPlay: (List<ForgeMediaItem>, Int) -> Unit,
+    onRename: (ForgePlaylist) -> Unit,
+    onDelete: (String) -> Unit,
+    onRemoveItem: (String, Uri) -> Unit,
+    onToggleFavorite: (ForgeMediaItem) -> Unit,
+) {
+    val selected = state.selectedPlaylist
+    if (selected == null) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (state.playlists.isEmpty()) {
+                item {
+                    Text(
+                        "No playlists yet. Tap + to create one.",
+                        color = ForgeMuted,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
+            items(state.playlists, key = { it.id }) { pl ->
+                PlaylistRow(
+                    playlist = pl,
+                    onOpen = { onOpen(pl) },
+                    onPlay = { if (pl.items.isNotEmpty()) onPlay(pl.items, 0) },
+                    onRename = { onRename(pl) },
+                    onDelete = { onDelete(pl.id) },
+                )
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = Color.White)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(selected.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text("${selected.items.size} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(
+                    onClick = { if (selected.items.isNotEmpty()) onPlay(selected.items, 0) },
+                    enabled = selected.items.isNotEmpty(),
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Play playlist", tint = ForgeAccent)
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (selected.items.isEmpty()) {
+                    item { Text("Playlist is empty. Star or add items from the library.", color = ForgeMuted) }
+                }
+                itemsIndexed(selected.items, key = { _, item -> item.stableKey() }) { index, item ->
+                    MediaRow(
+                        item = item,
+                        favorite = state.favoriteUris.contains(item.uri.toString()),
+                        onClick = { onPlay(selected.items, index) },
+                        onToggleFavorite = { onToggleFavorite(item) },
+                        onAddToPlaylist = {},
+                        onRemove = { onRemoveItem(selected.id, item.uri) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoritesSection(
+    items: List<ForgeMediaItem>,
+    onPlay: (ForgeMediaItem) -> Unit,
+) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Star, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Favorites", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.take(20).forEach { item ->
+                RecentCard(item = item, onClick = { onPlay(item) })
+            }
+        }
+    }
 }
 
 @Composable
@@ -269,20 +613,11 @@ private fun RecentSection(
     items: List<ForgeMediaItem>,
     onPlay: (ForgeMediaItem) -> Unit,
 ) {
-    Column {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Rounded.History,
-                contentDescription = null,
-                tint = ForgeAccent,
-                modifier = Modifier.size(18.dp),
-            )
+            Icon(Icons.Rounded.History, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Recently played",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-            )
+            Text("Recently played", style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
         Spacer(Modifier.height(10.dp))
         Row(
@@ -293,7 +628,6 @@ private fun RecentSection(
                 RecentCard(item = item, onClick = { onPlay(item) })
             }
         }
-        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -307,30 +641,7 @@ private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ForgeSurfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (item.albumArtUri != null) {
-                AsyncImage(
-                    model = item.albumArtUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(
-                    imageVector = if (item.kind == MediaKind.VIDEO) Icons.Rounded.Movie else Icons.Rounded.AudioFile,
-                    contentDescription = null,
-                    tint = ForgeAccent,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-        }
+        ThumbBox(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
         Spacer(Modifier.height(8.dp))
         Text(
             text = item.title,
@@ -343,109 +654,85 @@ private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun StreamDialog(
-    onDismiss: () -> Unit,
-    onOpen: (String) -> Unit,
+private fun MediaGridCard(
+    item: ForgeMediaItem,
+    favorite: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onAddToPlaylist: () -> Unit,
 ) {
-    var url by remember { mutableStateOf("") }
-    val valid = isPlayableStreamUrl(url)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = ForgeGraphite,
-        title = { Text("Open network stream", color = MaterialTheme.colorScheme.onBackground) },
-        text = {
-            Column {
-                Text(
-                    "Paste an http(s) or rtsp URL.",
-                    color = ForgeMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("https://…  or  rtsp://…") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Go,
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onGo = { if (valid) onOpen(url) },
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = ForgeAccent,
-                        unfocusedBorderColor = ForgeSurfaceVariant,
-                        cursorColor = ForgeAccent,
-                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    ),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onOpen(url) },
-                enabled = valid,
-                colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+    var menu by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+            .padding(8.dp),
+    ) {
+        Box {
+            ThumbBox(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
             ) {
-                Text("Play")
+                Icon(
+                    if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                    contentDescription = "Favorite",
+                    tint = if (favorite) ForgeAccent else Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = ForgeMuted)
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
+                DropdownMenuItem(
+                    text = { Text(if (favorite) "Remove favorite" else "Add favorite", color = Color.White) },
+                    onClick = { menu = false; onToggleFavorite() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Add to playlist", color = Color.White) },
+                    onClick = { menu = false; onAddToPlaylist() },
+                )
             }
-        },
-    )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.labelLarge,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            minLines = 2,
+        )
+        Text(
+            text = formatDuration(item.durationMs),
+            style = MaterialTheme.typography.bodySmall,
+            color = ForgeMuted,
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun filterColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = ForgeAccent,
-    selectedLabelColor = ForgeBlack,
-    containerColor = ForgeGraphite,
-    labelColor = ForgeMuted,
-)
-
-@Composable
-private fun MediaRow(item: ForgeMediaItem, onClick: () -> Unit) {
+private fun MediaRow(
+    item: ForgeMediaItem,
+    favorite: Boolean,
+    onClick: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onRemove: (() -> Unit)? = null,
+) {
+    var menu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(ForgeGraphite)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ForgeSurfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (item.albumArtUri != null) {
-                AsyncImage(
-                    model = item.albumArtUri,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .aspectRatio(1f),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(
-                    imageVector = if (item.kind == MediaKind.VIDEO) Icons.Rounded.Movie else Icons.Rounded.AudioFile,
-                    contentDescription = null,
-                    tint = ForgeAccent,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-        }
+        ThumbBox(item = item, modifier = Modifier.size(64.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -462,8 +749,268 @@ private fun MediaRow(item: ForgeMediaItem, onClick: () -> Unit) {
                 color = ForgeMuted,
             )
         }
+        IconButton(onClick = onToggleFavorite) {
+            Icon(
+                if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                contentDescription = "Favorite",
+                tint = if (favorite) ForgeAccent else ForgeMuted,
+            )
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
+            DropdownMenuItem(
+                text = { Text("Add to playlist", color = Color.White) },
+                onClick = { menu = false; onAddToPlaylist() },
+            )
+            if (onRemove != null) {
+                DropdownMenuItem(
+                    text = { Text("Remove from playlist", color = Color.White) },
+                    onClick = { menu = false; onRemove() },
+                )
+            }
+        }
     }
 }
+
+@Composable
+private fun FolderCard(folder: MediaFolder, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ForgeSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (folder.thumbUri != null) {
+                AsyncImage(
+                    model = folder.thumbUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(Icons.Rounded.Folder, null, tint = ForgeAccent, modifier = Modifier.size(40.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(folder.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun PlaylistRow(
+    playlist: ForgePlaylist,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onOpen)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ForgeSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(playlist.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text("${playlist.items.size} items", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+        }
+        IconButton(onClick = onPlay, enabled = playlist.items.isNotEmpty()) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = ForgeAccent)
+        }
+        Box {
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Rounded.Edit, contentDescription = "Edit", tint = ForgeMuted)
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
+                DropdownMenuItem(text = { Text("Rename", color = Color.White) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(
+                    text = { Text("Delete", color = Color.White) },
+                    onClick = { menu = false; onDelete() },
+                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = ForgeAccent) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThumbBox(item: ForgeMediaItem, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(ForgeSurfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        val model = item.albumArtUri ?: item.uri.takeIf { item.isVideo }
+        if (model != null) {
+            AsyncImage(
+                model = model,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Icon(
+                imageVector = if (item.kind == MediaKind.VIDEO) Icons.Rounded.Movie else Icons.Rounded.AudioFile,
+                contentDescription = null,
+                tint = ForgeAccent,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StreamDialog(onDismiss: () -> Unit, onOpen: (String) -> Unit) {
+    var url by remember { mutableStateOf("") }
+    val valid = isPlayableStreamUrl(url)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Open network stream", color = MaterialTheme.colorScheme.onBackground) },
+        text = {
+            Column {
+                Text("Paste an http(s) or rtsp URL.", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("https://…  or  rtsp://…") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { if (valid) onOpen(url) }),
+                    colors = fieldColors(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onOpen(url) },
+                enabled = valid,
+                colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+            ) { Text("Play") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = ForgeMuted) }
+        },
+    )
+}
+
+@Composable
+private fun NameDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text(title, color = Color.White) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors(),
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(name) },
+                enabled = name.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = ForgeMuted) }
+        },
+    )
+}
+
+@Composable
+private fun AddToPlaylistDialog(
+    playlists: List<ForgePlaylist>,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+    onCreate: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Add to playlist", color = Color.White) },
+        text = {
+            Column {
+                if (playlists.isEmpty()) {
+                    Text("No playlists yet.", color = ForgeMuted)
+                } else {
+                    playlists.forEach { pl ->
+                        Text(
+                            text = pl.name,
+                            color = Color.White,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(pl.id) }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCreate) { Text("New playlist", color = ForgeAccent) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = ForgeMuted) }
+        },
+    )
+}
+
+@Composable
+private fun filterColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = ForgeAccent,
+    selectedLabelColor = ForgeBlack,
+    containerColor = ForgeGraphite,
+    labelColor = ForgeMuted,
+)
+
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = ForgeAccent,
+    unfocusedBorderColor = ForgeSurfaceVariant,
+    focusedContainerColor = ForgeGraphite,
+    unfocusedContainerColor = ForgeGraphite,
+    cursorColor = ForgeAccent,
+    focusedTextColor = MaterialTheme.colorScheme.onBackground,
+    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+)
 
 fun formatDuration(ms: Long): String {
     if (ms <= 0L) return "0:00"

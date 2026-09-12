@@ -86,7 +86,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Subtitles · audio tracks · repeat/shuffle · sleep · streams · PiP · MediaSession",
+                text = "Folders · playlists · favorites · EQ · A-B loop · orientation · grid · subtitles · streams · PiP",
                 style = MaterialTheme.typography.bodyMedium,
                 color = ForgeMuted,
             )

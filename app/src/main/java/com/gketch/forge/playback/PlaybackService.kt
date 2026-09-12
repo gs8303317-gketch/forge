@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -20,7 +21,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        val exo = ExoPlayer.Builder(this)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
             .setHandleAudioBecomingNoisy(true)
@@ -35,7 +36,21 @@ class PlaybackService : MediaSessionService() {
             .apply {
                 playWhenReady = true
                 repeatMode = Player.REPEAT_MODE_OFF
+                addAnalyticsListener(object : AnalyticsListener {
+                    override fun onAudioSessionIdChanged(
+                        eventTime: AnalyticsListener.EventTime,
+                        audioSessionId: Int,
+                    ) {
+                        ForgeEqualizer.attach(audioSessionId)
+                    }
+                })
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        ForgeEqualizer.attach(audioSessionId)
+                    }
+                })
             }
+        ForgeEqualizer.attach(exo.audioSessionId)
 
         val sessionActivity = PendingIntent.getActivity(
             this,
@@ -52,7 +67,7 @@ class PlaybackService : MediaSessionService() {
         notificationProvider.setSmallIcon(R.drawable.ic_notification)
         setMediaNotificationProvider(notificationProvider)
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaSession.Builder(this, exo)
             .setId("forge")
             .setSessionActivity(sessionActivity)
             .build()
@@ -63,17 +78,18 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val player = mediaSession?.player
-        if (player == null ||
-            !player.playWhenReady ||
-            player.mediaItemCount == 0 ||
-            player.playbackState == Player.STATE_ENDED
+        val p = mediaSession?.player
+        if (p == null ||
+            !p.playWhenReady ||
+            p.mediaItemCount == 0 ||
+            p.playbackState == Player.STATE_ENDED
         ) {
             stopSelf()
         }
     }
 
     override fun onDestroy() {
+        ForgeEqualizer.release()
         mediaSession?.run {
             player.release()
             release()

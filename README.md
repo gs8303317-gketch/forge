@@ -4,11 +4,17 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 
 ## Features
 
-- Local video & audio library via MediaStore
+- Local video & audio library via MediaStore (thumbnail grid + list)
+- Folder browser (MediaStore buckets) with play-folder queue
+- Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
+- Favorites with home section
 - Search and filter (All / Videos / Audio)
 - Recently played home section
 - Open network streams (`http`, `https`, `rtsp`)
 - Media3 player: play/pause, seek, next/prev, 0.5×–2× speed
+- Multi-band equalizer with presets (system Equalizer API)
+- A-B loop (set A / set B / clear)
+- Orientation lock while playing (auto / portrait / landscape)
 - Subtitles: embedded tracks + external `.srt`/`.vtt`, toggle, size
 - Audio track selection
 - Repeat (off / one / all) and shuffle
@@ -40,4 +46,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.2.0 (3)
+- **version:** 1.3.0 (4)

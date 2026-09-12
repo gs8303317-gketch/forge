@@ -1,5 +1,6 @@
 package com.gketch.forge.ui.library
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import com.gketch.forge.ui.player.rememberPlayerController
 import com.gketch.forge.ui.player.stopCompletely
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeGraphite
+import com.gketch.forge.ui.thumb.ForgeThumbnailUri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -54,6 +56,8 @@ fun MiniPlayerBar(
     var title by remember { mutableStateOf("") }
     var playing by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
+    var artUri by remember { mutableStateOf<Uri?>(null) }
+    var isVideo by remember { mutableStateOf(true) }
 
     fun sync() {
         val p = controller
@@ -68,6 +72,12 @@ fun MiniPlayerBar(
         playing = p.isPlaying
         val dur = p.duration
         progress = if (dur > 0) (p.currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+        val meta = p.mediaMetadata
+        artUri = meta.artworkUri
+            ?: p.currentMediaItem?.mediaMetadata?.artworkUri
+            ?: p.currentMediaItem?.localConfiguration?.uri
+        val mime = p.currentMediaItem?.localConfiguration?.mimeType.orEmpty()
+        isVideo = !mime.startsWith("audio")
     }
 
     DisposableEffect(controller) {
@@ -116,13 +126,19 @@ fun MiniPlayerBar(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ForgeThumbnailUri(
+                uri = artUri,
+                isVideo = isVideo,
+                modifier = Modifier.size(40.dp),
+            )
+            Spacer(Modifier.width(8.dp))
             Icon(
                 Icons.Rounded.ExpandLess,
                 contentDescription = null,
                 tint = ForgeAccent,
                 modifier = Modifier.size(22.dp),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
             Text(
                 text = title,
                 color = Color.White,

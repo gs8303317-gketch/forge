@@ -5,6 +5,11 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 ## Features
 
 - Local video & audio library via MediaStore (thumbnail grid + list)
+- Reliable MediaStore/SAF thumbnails (`loadThumbnail` + Coil fetcher; album art for audio)
+- Immersive player (hides status + navigation bars while playing; restores on leave)
+- Continue watching row (unfinished videos with progress on thumb)
+- Home-screen playback widget (title + play/pause; Glance)
+- Cast entry (MediaRouteButton + Cast framework options; requires Play Services — picker ships; full CastPlayer handoff is best-effort)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
 - Favorites with home section
@@ -77,4 +82,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.8.0 (9)
+- **version:** 1.9.0 (10)

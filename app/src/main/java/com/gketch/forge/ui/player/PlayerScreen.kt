@@ -12,6 +12,10 @@ import android.provider.Settings
 import android.util.Rational
 import android.util.TypedValue
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.gketch.forge.cast.ForgeCastButton
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -309,7 +313,15 @@ fun PlayerScreen(
     }
 
     DisposableEffect(activity) {
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val window = activity?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val insetsController = window?.let {
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
         val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
             inPip = info.isInPictureInPictureMode
             if (info.isInPictureInPictureMode) {
@@ -319,7 +331,8 @@ fun PlayerScreen(
         }
         activity?.addOnPictureInPictureModeChangedListener(pipListener)
         onDispose {
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            insetsController?.show(WindowInsetsCompat.Type.systemBars())
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.updatePipParams(allowed = false)
             activity?.removeOnPictureInPictureModeChangedListener(pipListener)
@@ -1502,6 +1515,7 @@ private fun PlayerTopBar(
         IconButton(onClick = onLock) {
             Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White)
         }
+        ForgeCastButton()
         Box {
             IconButton(onClick = onMore) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = Color.White)

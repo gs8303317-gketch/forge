@@ -9,12 +9,53 @@ import kotlinx.coroutines.flow.first
 
 private val Context.resumeDataStore by preferencesDataStore(name = "forge_resume")
 
+data class ContinueWatchItem(
+    val item: ForgeMediaItem,
+    val positionMs: Long,
+    val progress: Float,
+)
+
 class ResumeStore(context: Context) {
     private val store = context.applicationContext.resumeDataStore
 
     suspend fun getPosition(uri: String): Long {
         val key = longPreferencesKey(keyFor(uri))
         return store.data.first()[key] ?: 0L
+    }
+
+    /** Snapshot of all saved resume keys (`pos_…` → positionMs). */
+    suspend fun positionSnapshot(): Map<String, Long> {
+        val prefs = store.data.first()
+        val out = LinkedHashMap<String, Long>()
+        for ((key, value) in prefs.asMap()) {
+            if (key.name.startsWith("pos_") && value is Long) {
+                out[key.name] = value
+            }
+        }
+        return out
+    }
+
+    fun positionOf(snapshot: Map<String, Long>, uri: String): Long =
+        snapshot[keyFor(uri)] ?: 0L
+
+    /**
+     * Unfinished items: resume progress > 0 and not near end.
+     * Prefer videos; include audio if present in [candidates].
+     */
+    fun continueWatching(
+        candidates: List<ForgeMediaItem>,
+        snapshot: Map<String, Long>,
+        videosOnly: Boolean = true,
+    ): List<ContinueWatchItem> {
+        val pool = if (videosOnly) candidates.filter { it.isVideo } else candidates
+        return pool.mapNotNull { item ->
+            val pos = positionOf(snapshot, item.uri.toString())
+            if (pos < MIN_SAVE_MS) return@mapNotNull null
+            val dur = item.durationMs
+            if (dur > 0L && pos >= dur - NEAR_END_MS) return@mapNotNull null
+            val progress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 0.99f) else 0.15f
+            ContinueWatchItem(item = item, positionMs = pos, progress = progress)
+        }.sortedByDescending { it.positionMs }.take(24)
     }
 
     suspend fun savePosition(uri: String, positionMs: Long, durationMs: Long) {

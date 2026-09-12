@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -49,6 +51,7 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Sort
@@ -96,14 +99,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import com.gketch.forge.data.ContinueWatchItem
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
 import com.gketch.forge.data.LibrarySort
@@ -113,6 +115,8 @@ import com.gketch.forge.data.SavedStream
 import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.data.isPlayableStreamUrl
 import com.gketch.forge.ui.permissions.hasMediaPermission
+import com.gketch.forge.ui.thumb.ForgeThumbnail
+import com.gketch.forge.ui.thumb.ForgeThumbnailUri
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeGraphite
@@ -203,7 +207,7 @@ fun LibraryScreen(
         containerColor = ForgeBlack,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            Column {
+            Column(modifier = Modifier.navigationBarsPadding()) {
                 MiniPlayerBar(onExpand = onExpandPlayer)
                 NavigationBar(containerColor = ForgeGraphite) {
                     val items = listOf(
@@ -234,6 +238,7 @@ fun LibraryScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .background(ForgeBlack)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
@@ -608,9 +613,10 @@ private fun LibraryBody(
 ) {
     val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
+    val continueWatching = if (state.tab == LibraryTab.VIDEO) state.continueWatching else emptyList()
     val sectionTitle = if (state.tab == LibraryTab.AUDIO) "Audio" else "Videos"
     when {
-        state.loading && permitted && state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() -> {
+        state.loading && permitted && state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ForgeAccent)
             }
@@ -620,7 +626,7 @@ private fun LibraryBody(
                 Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
             }
         }
-        state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() -> {
+        state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No media found", color = ForgeMuted)
@@ -640,6 +646,14 @@ private fun LibraryBody(
                 if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "fav-header") {
                         FavoritesSection(items = kindFavs, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (continueWatching.isNotEmpty() && state.query.isBlank()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "continue-header") {
+                        ContinueWatchingSection(
+                            items = continueWatching,
+                            onPlay = { onPlay(listOf(it), 0) },
+                        )
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
@@ -681,6 +695,14 @@ private fun LibraryBody(
                 if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(key = "fav-header") {
                         FavoritesSection(items = kindFavs, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (continueWatching.isNotEmpty() && state.query.isBlank()) {
+                    item(key = "continue-header") {
+                        ContinueWatchingSection(
+                            items = continueWatching,
+                            onPlay = { onPlay(listOf(it), 0) },
+                        )
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
@@ -994,6 +1016,52 @@ private fun PlaylistsBody(
     }
 }
 
+
+@Composable
+private fun ContinueWatchingSection(
+    items: List<ContinueWatchItem>,
+    onPlay: (ForgeMediaItem) -> Unit,
+) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.PlayCircle, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Continue watching", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.take(16).forEach { cw ->
+                Column(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(ForgeGraphite)
+                        .clickable(onClick = { onPlay(cw.item) })
+                        .padding(8.dp),
+                ) {
+                    ThumbBox(
+                        item = cw.item,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                        progress = cw.progress,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = cw.item.title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        minLines = 2,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun FavoritesSection(
     items: List<ForgeMediaItem>,
@@ -1213,25 +1281,14 @@ private fun FolderCard(folder: MediaFolder, onClick: () -> Unit, onLongClick: ()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
     ) {
-        Box(
+        ForgeThumbnailUri(
+            uri = folder.thumbUri,
+            isVideo = folder.kindHint == MediaKind.VIDEO,
+            folder = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ForgeSurfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (folder.thumbUri != null) {
-                AsyncImage(
-                    model = folder.thumbUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(Icons.Rounded.Folder, null, tint = ForgeAccent, modifier = Modifier.size(40.dp))
-            }
-        }
+                .aspectRatio(1f),
+        )
         Spacer(Modifier.height(8.dp))
         Text(folder.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
@@ -1250,24 +1307,12 @@ private fun FolderRow(folder: MediaFolder, onClick: () -> Unit, onLongClick: () 
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(ForgeSurfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (folder.thumbUri != null) {
-                AsyncImage(
-                    model = folder.thumbUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                Icon(Icons.Rounded.Folder, null, tint = ForgeAccent)
-            }
-        }
+        ForgeThumbnailUri(
+            uri = folder.thumbUri,
+            isVideo = folder.kindHint == MediaKind.VIDEO,
+            folder = true,
+            modifier = Modifier.size(52.dp),
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1334,30 +1379,8 @@ private fun PlaylistRow(
 }
 
 @Composable
-private fun ThumbBox(item: ForgeMediaItem, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(ForgeSurfaceVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        val model = item.albumArtUri ?: item.uri.takeIf { item.isVideo }
-        if (model != null) {
-            AsyncImage(
-                model = model,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Icon(
-                imageVector = if (item.kind == MediaKind.VIDEO) Icons.Rounded.Movie else Icons.Rounded.AudioFile,
-                contentDescription = null,
-                tint = ForgeAccent,
-                modifier = Modifier.size(28.dp),
-            )
-        }
-    }
+private fun ThumbBox(item: ForgeMediaItem, modifier: Modifier = Modifier, progress: Float? = null) {
+    ForgeThumbnail(item = item, modifier = modifier, progress = progress)
 }
 
 @Composable

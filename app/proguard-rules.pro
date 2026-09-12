@@ -7,3 +7,8 @@
    public void *(android.view.View);
 }
 -dontwarn androidx.datastore.**
+-keep class com.gketch.forge.cast.** { *; }
+-keep class com.gketch.forge.widget.** { *; }
+-keep class com.google.android.gms.cast.** { *; }
+-dontwarn com.google.android.gms.**
+-dontwarn androidx.mediarouter.**

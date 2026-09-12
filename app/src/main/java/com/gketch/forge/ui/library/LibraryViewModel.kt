@@ -18,6 +18,7 @@ import com.gketch.forge.data.MediaRepository
 import com.gketch.forge.data.M3uPlaylistIo
 import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.ContinueWatchItem
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
@@ -41,6 +42,7 @@ data class LibraryUiState(
     val filtered: List<ForgeMediaItem> = emptyList(),
     val recent: List<ForgeMediaItem> = emptyList(),
     val favorites: List<ForgeMediaItem> = emptyList(),
+    val continueWatching: List<ContinueWatchItem> = emptyList(),
     val favoriteUris: Set<String> = emptySet(),
     val folders: List<MediaFolder> = emptyList(),
     val folderItems: List<ForgeMediaItem> = emptyList(),
@@ -154,11 +156,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         items.filter { m -> m.bucketId == folder.bucketId }
                             .sortedBy { m -> m.title.lowercase() }
                     }.orEmpty()
+                    val snap = resumeStore.positionSnapshot()
+                    val continuing = resumeStore.continueWatching(items, snap, videosOnly = true)
                     it.copy(
                         items = items,
                         filtered = applyFilterAndSort(items, it.filter, it.sort),
                         folders = folders,
                         folderItems = folderItems,
+                        continueWatching = continuing,
                         loading = false,
                     )
                 }

@@ -14,6 +14,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.gketch.forge.MainActivity
+import com.gketch.forge.widget.PlaybackWidgetUpdater
 import com.gketch.forge.R
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -109,6 +110,15 @@ class PlaybackService : MediaSessionService() {
             }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_WIDGET_TOGGLE -> {
+                PlaybackWidgetUpdater.toggle(this)
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
@@ -189,6 +199,7 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_STOP = "com.gketch.forge.STOP"
+        const val ACTION_WIDGET_TOGGLE = "com.gketch.forge.WIDGET_TOGGLE"
         val STOP_COMMAND = SessionCommand(ACTION_STOP, Bundle.EMPTY)
 
         fun stopButton(): CommandButton =

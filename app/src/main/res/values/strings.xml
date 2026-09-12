@@ -29,4 +29,5 @@
     <string name="nav_audio">Audio</string>
     <string name="nav_playlists">Playlists</string>
     <string name="nav_browse">Browse</string>
+    <string name="widget_description">Forge playback controls</string>
 </resources>

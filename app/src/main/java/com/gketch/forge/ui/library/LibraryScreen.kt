@@ -89,6 +89,7 @@ import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
+import com.gketch.forge.data.SavedStream
 import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.data.isPlayableStreamUrl
 import com.gketch.forge.ui.permissions.hasMediaPermission
@@ -112,6 +113,7 @@ fun LibraryScreen(
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
     var renamePlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
+    var renameStream by remember { mutableStateOf<SavedStream?>(null) }
     var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
     val permitted = hasMediaPermission(context)
 
@@ -129,6 +131,13 @@ fun LibraryScreen(
                     contentColor = Color.Black,
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "New playlist")
+                }
+                LibraryTab.STREAMS -> FloatingActionButton(
+                    onClick = { showStreamDialog = true },
+                    containerColor = ForgeAccent,
+                    contentColor = Color.Black,
+                ) {
+                    Icon(Icons.Rounded.Link, contentDescription = "Add stream")
                 }
                 else -> FloatingActionButton(
                     onClick = { showStreamDialog = true },
@@ -235,6 +244,12 @@ fun LibraryScreen(
                         label = { Text("Playlists") },
                         colors = filterColors(),
                     )
+                    FilterChip(
+                        selected = state.tab == LibraryTab.STREAMS,
+                        onClick = { viewModel.setTab(LibraryTab.STREAMS) },
+                        label = { Text("Streams") },
+                        colors = filterColors(),
+                    )
                 }
                 if (!permitted) {
                     Spacer(Modifier.height(10.dp))
@@ -274,17 +289,31 @@ fun LibraryScreen(
                 onRemoveItem = viewModel::removeFromPlaylist,
                 onToggleFavorite = viewModel::toggleFavorite,
             )
+            LibraryTab.STREAMS -> StreamsBody(
+                state = state,
+                padding = padding,
+                onPlay = onPlay,
+                onRename = { renameStream = it },
+                onDelete = viewModel::removeStream,
+            )
         }
     }
 
     if (showStreamDialog) {
         StreamDialog(
             onDismiss = { showStreamDialog = false },
-            onOpen = { url ->
-                val uri = Uri.parse(url.trim())
-                val item = forgeItemFromUri(uri)
+            onOpen = { url, name, save ->
+                val trimmed = url.trim()
+                val uri = Uri.parse(trimmed)
+                val item = forgeItemFromUri(uri, title = name?.takeIf { it.isNotBlank() })
+                if (save) viewModel.saveStream(trimmed, name)
                 showStreamDialog = false
                 onPlay(listOf(item), 0)
+            },
+            onSaveOnly = { url, name ->
+                viewModel.saveStream(url, name)
+                showStreamDialog = false
+                viewModel.setTab(LibraryTab.STREAMS)
             },
         )
     }
@@ -309,6 +338,18 @@ fun LibraryScreen(
             onConfirm = {
                 viewModel.renamePlaylist(pl.id, it)
                 renamePlaylist = null
+            },
+        )
+    }
+    renameStream?.let { stream ->
+        NameDialog(
+            title = "Rename stream",
+            initial = stream.name,
+            confirmLabel = "Save",
+            onDismiss = { renameStream = null },
+            onConfirm = {
+                viewModel.renameStream(stream.id, it)
+                renameStream = null
             },
         )
     }
@@ -353,7 +394,7 @@ private fun LibraryBody(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No media found", color = ForgeMuted)
                     Spacer(Modifier.height(8.dp))
-                    Text("Open a network stream with the link button", color = ForgeMuted)
+                    Text("Open or save a network stream with the link button", color = ForgeMuted)
                 }
             }
         }
@@ -368,6 +409,14 @@ private fun LibraryBody(
                 if (state.favorites.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "fav-header") {
                         FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (state.savedStreams.isNotEmpty() && state.query.isBlank()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "streams-header") {
+                        SavedStreamsSection(
+                            streams = state.savedStreams,
+                            onPlay = { onPlay(listOf(it.toMediaItem()), 0) },
+                        )
                     }
                 }
                 if (state.recent.isNotEmpty() && state.query.isBlank()) {
@@ -403,6 +452,14 @@ private fun LibraryBody(
                 if (state.favorites.isNotEmpty() && state.query.isBlank()) {
                     item(key = "fav-header") {
                         FavoritesSection(items = state.favorites, onPlay = { onPlay(listOf(it), 0) })
+                    }
+                }
+                if (state.savedStreams.isNotEmpty() && state.query.isBlank()) {
+                    item(key = "streams-header") {
+                        SavedStreamsSection(
+                            streams = state.savedStreams,
+                            onPlay = { onPlay(listOf(it.toMediaItem()), 0) },
+                        )
                     }
                 }
                 if (state.recent.isNotEmpty() && state.query.isBlank()) {
@@ -884,16 +941,22 @@ private fun ThumbBox(item: ForgeMediaItem, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StreamDialog(onDismiss: () -> Unit, onOpen: (String) -> Unit) {
+private fun StreamDialog(
+    onDismiss: () -> Unit,
+    onOpen: (url: String, name: String?, save: Boolean) -> Unit,
+    onSaveOnly: (url: String, name: String?) -> Unit,
+) {
     var url by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var saveToo by remember { mutableStateOf(true) }
     val valid = isPlayableStreamUrl(url)
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ForgeGraphite,
-        title = { Text("Open network stream", color = MaterialTheme.colorScheme.onBackground) },
+        title = { Text("Network stream", color = MaterialTheme.colorScheme.onBackground) },
         text = {
             Column {
-                Text("Paste an http(s) or rtsp URL.", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("Paste an http(s) or rtsp URL. Optionally save it for quick access.", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = url,
@@ -901,23 +964,188 @@ private fun StreamDialog(onDismiss: () -> Unit, onOpen: (String) -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     placeholder = { Text("https://…  or  rtsp://…") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { if (valid) onOpen(url) }),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                     colors = fieldColors(),
                 )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Name (optional)") },
+                    colors = fieldColors(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { saveToo = !saveToo }
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Save to Streams", color = Color.White)
+                    Text(if (saveToo) "Yes" else "No", color = ForgeAccent)
+                }
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onOpen(url) },
-                enabled = valid,
-                colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
-            ) { Text("Play") }
+            Row {
+                TextButton(
+                    onClick = { onSaveOnly(url, name.ifBlank { null }) },
+                    enabled = valid,
+                ) { Text("Save", color = ForgeMuted) }
+                Button(
+                    onClick = { onOpen(url, name.ifBlank { null }, saveToo) },
+                    enabled = valid,
+                    colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+                ) { Text("Play") }
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = ForgeMuted) }
         },
     )
+}
+
+@Composable
+private fun StreamsBody(
+    state: LibraryUiState,
+    padding: PaddingValues,
+    onPlay: (List<ForgeMediaItem>, Int) -> Unit,
+    onRename: (SavedStream) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    val q = state.query.trim().lowercase()
+    val streams = if (q.isEmpty()) state.savedStreams
+    else state.savedStreams.filter {
+        it.name.lowercase().contains(q) || it.url.lowercase().contains(q)
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(padding),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (streams.isEmpty()) {
+            item {
+                Text(
+                    "No saved streams yet. Tap + to add a network URL.",
+                    color = ForgeMuted,
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        }
+        items(streams, key = { it.id }) { stream ->
+            SavedStreamRow(
+                stream = stream,
+                onPlay = { onPlay(listOf(stream.toMediaItem()), 0) },
+                onRename = { onRename(stream) },
+                onDelete = { onDelete(stream.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SavedStreamsSection(
+    streams: List<SavedStream>,
+    onPlay: (SavedStream) -> Unit,
+) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Link, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Saved streams", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            streams.take(12).forEach { stream ->
+                Column(
+                    modifier = Modifier
+                        .width(140.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(ForgeGraphite)
+                        .clickable { onPlay(stream) }
+                        .padding(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1.6f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ForgeSurfaceVariant),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Rounded.Link, null, tint = ForgeAccent)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stream.name,
+                        color = Color.White,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        minLines = 2,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedStreamRow(
+    stream: SavedStream,
+    onPlay: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onPlay)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ForgeSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Link, null, tint = ForgeAccent)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(stream.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stream.url, color = ForgeMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        IconButton(onClick = onPlay) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = ForgeAccent)
+        }
+        Box {
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Rounded.Edit, contentDescription = "Edit", tint = ForgeMuted)
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
+                DropdownMenuItem(text = { Text("Rename", color = Color.White) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(
+                    text = { Text("Delete", color = Color.White) },
+                    onClick = { menu = false; onDelete() },
+                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = ForgeAccent) },
+                )
+            }
+        }
+    }
 }
 
 @Composable

@@ -59,6 +59,7 @@ fun PlayerGestureLayer(
     onTap: () -> Unit,
     currentVolume: () -> Float,
     currentBrightness: () -> Float,
+    gesturesEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val durationState = rememberUpdatedState(durationMs)
@@ -83,12 +84,15 @@ fun PlayerGestureLayer(
         }
     }
 
+    val enabledState = rememberUpdatedState(gesturesEnabled)
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
+            .pointerInput(gesturesEnabled) {
                 detectTapGestures(
                     onDoubleTap = { offset ->
+                        if (!enabledState.value) return@detectTapGestures
                         val back = offset.x < size.width / 2f
                         doubleTapFlash = back
                         doubleTapState.value(back)
@@ -96,7 +100,8 @@ fun PlayerGestureLayer(
                     onTap = { tapState.value() },
                 )
             }
-            .pointerInput(Unit) {
+            .pointerInput(gesturesEnabled) {
+                if (!gesturesEnabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val start = down.position

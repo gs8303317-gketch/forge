@@ -42,15 +42,18 @@ class PlaybackService : MediaSessionService() {
                         audioSessionId: Int,
                     ) {
                         ForgeEqualizer.attach(audioSessionId)
+                        ForgeLoudness.attach(audioSessionId)
                     }
                 })
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         ForgeEqualizer.attach(audioSessionId)
+                        ForgeLoudness.attach(audioSessionId)
                     }
                 })
             }
         ForgeEqualizer.attach(exo.audioSessionId)
+        ForgeLoudness.attach(exo.audioSessionId)
 
         val sessionActivity = PendingIntent.getActivity(
             this,
@@ -89,6 +92,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        ForgeLoudness.release()
         ForgeEqualizer.release()
         mediaSession?.run {
             player.release()

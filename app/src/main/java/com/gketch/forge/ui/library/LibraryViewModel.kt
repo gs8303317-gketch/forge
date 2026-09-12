@@ -12,6 +12,8 @@ import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.MediaRepository
 import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.SavedStream
+import com.gketch.forge.data.SavedStreamsStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class LibraryFilter { ALL, VIDEO, AUDIO }
-enum class LibraryTab { LIBRARY, FOLDERS, PLAYLISTS }
+enum class LibraryTab { LIBRARY, FOLDERS, PLAYLISTS, STREAMS }
 enum class LibraryLayout { GRID, LIST }
 
 data class LibraryUiState(
@@ -35,6 +37,7 @@ data class LibraryUiState(
     val selectedFolder: MediaFolder? = null,
     val playlists: List<ForgePlaylist> = emptyList(),
     val selectedPlaylist: ForgePlaylist? = null,
+    val savedStreams: List<SavedStream> = emptyList(),
     val query: String = "",
     val filter: LibraryFilter = LibraryFilter.ALL,
     val tab: LibraryTab = LibraryTab.LIBRARY,
@@ -48,6 +51,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val recentStore = RecentStore(application)
     private val favoritesStore = FavoritesStore(application)
     private val playlistStore = PlaylistStore(application)
+    private val savedStreamsStore = SavedStreamsStore(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
@@ -77,6 +81,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     }
                     st.copy(playlists = list, selectedPlaylist = selected)
                 }
+            }
+        }
+        viewModelScope.launch {
+            savedStreamsStore.streams.collect { list ->
+                _state.update { it.copy(savedStreams = list) }
             }
         }
     }
@@ -189,6 +198,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeFromPlaylist(playlistId: String, uri: Uri) {
         viewModelScope.launch { playlistStore.removeItem(playlistId, uri) }
+    }
+
+    fun saveStream(url: String, name: String?) {
+        viewModelScope.launch { savedStreamsStore.save(url, name) }
+    }
+
+    fun renameStream(id: String, name: String) {
+        viewModelScope.launch { savedStreamsStore.rename(id, name) }
+    }
+
+    fun removeStream(id: String) {
+        viewModelScope.launch { savedStreamsStore.remove(id) }
     }
 
     private fun applyFilter(items: List<ForgeMediaItem>, filter: LibraryFilter): List<ForgeMediaItem> {

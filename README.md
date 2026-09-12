@@ -8,6 +8,13 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
 - Favorites with home section
+- Saved network streams (name + quick open; Streams tab + home section)
+- Bookmarks per media (named or timestamp; jump from list)
+- Media info panel (resolution, duration, size, mime/container, tracks)
+- Subtitle delay (± ms) with cue overlay
+- Volume boost above 100% (LoudnessEnhancer, capped)
+- Control lock (gestures/controls off; tap zone to unlock)
+- Frame snapshot to Pictures/Forge
 - Search and filter (All / Videos / Audio)
 - Recently played home section
 - Open network streams (`http`, `https`, `rtsp`)
@@ -46,4 +53,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.3.0 (4)
+- **version:** 1.4.0 (5)

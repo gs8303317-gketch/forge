@@ -106,6 +106,20 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.gketch.forge.MainActivity
 import com.gketch.forge.data.ForgeMediaItem
+import android.widget.Toast
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.ui.zIndex
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
+import com.gketch.forge.data.BookmarkStore
+import com.gketch.forge.data.MediaBookmark
+import com.gketch.forge.playback.ForgeLoudness
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
@@ -129,7 +143,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Equalizer, Orientation, AbLoop }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay }
 
 private enum class OrientationLock(val label: String) {
     AUTO("Auto"),
@@ -191,6 +205,17 @@ fun PlayerScreen(
     var eqEnabled by remember { mutableStateOf(ForgeEqualizer.enabled) }
     var eqBands by remember { mutableStateOf(ForgeEqualizer.bands()) }
     var eqPreset by remember { mutableStateOf(ForgeEqualizer.presetName) }
+    val bookmarkStore = remember { BookmarkStore(context) }
+    var allBookmarks by remember { mutableStateOf<List<MediaBookmark>>(emptyList()) }
+    var controlsLocked by remember { mutableStateOf(false) }
+    var subtitleDelayMs by remember { mutableIntStateOf(0) }
+    var audioDelayMs by remember { mutableIntStateOf(0) }
+    var volumeBoostPercent by remember { mutableIntStateOf(ForgeLoudness.boostPercent) }
+    var snapshotMessage by remember { mutableStateOf<String?>(null) }
+    var displayedCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+    var videoWidth by remember { mutableIntStateOf(0) }
+    var videoHeight by remember { mutableIntStateOf(0) }
+    var videoTrackLabels by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -214,6 +239,10 @@ fun PlayerScreen(
             enableTextTracks(controller, true)
             panel = Panel.None
         }
+    }
+
+    LaunchedEffect(Unit) {
+        bookmarkStore.bookmarks.collect { allBookmarks = it }
     }
 
     LaunchedEffect(Unit) {
@@ -259,6 +288,7 @@ fun PlayerScreen(
                     abPointA = null
                     abPointB = null
                     abLoopEnabled = false
+                    displayedCues = emptyList()
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in queue.indices) {
                         index = newIndex
@@ -283,6 +313,8 @@ fun PlayerScreen(
                 override fun onVideoSizeChanged(videoSize: VideoSize) {
                     if (videoSize.width > 0 && videoSize.height > 0) {
                         hasVideo = true
+                        videoWidth = videoSize.width
+                        videoHeight = videoSize.height
                         activity?.updatePipParams(
                             allowed = true,
                             aspect = Rational(videoSize.width, videoSize.height),
@@ -293,6 +325,7 @@ fun PlayerScreen(
                 override fun onTracksChanged(tracks: Tracks) {
                     textTracks = collectTracks(tracks, C.TRACK_TYPE_TEXT)
                     audioTracks = collectTracks(tracks, C.TRACK_TYPE_AUDIO)
+                    videoTrackLabels = collectTrackDetailLabels(tracks, C.TRACK_TYPE_VIDEO)
                     val video = tracks.groups.any { group ->
                         group.type == C.TRACK_TYPE_VIDEO && group.isSelected
                     }
@@ -307,6 +340,23 @@ fun PlayerScreen(
 
                 override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
                     shuffleOn = shuffleModeEnabled
+                }
+
+                override fun onCues(cueGroup: CueGroup) {
+                    val offsetMs = subtitleDelayMs
+                    if (!subtitlesEnabled) {
+                        displayedCues = emptyList()
+                        return
+                    }
+                    if (offsetMs <= 0) {
+                        // Negative offset: true early-shift needs renderer access; show immediately
+                        displayedCues = cueGroup.cues
+                    } else {
+                        scope.launch {
+                            kotlinx.coroutines.delay(offsetMs.toLong())
+                            displayedCues = cueGroup.cues
+                        }
+                    }
                 }
             }
             player.addListener(listener)
@@ -415,11 +465,26 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, inPip, panel) {
+    LaunchedEffect(controlsVisible, isPlaying, inPip, panel, controlsLocked) {
+        if (controlsLocked) {
+            controlsVisible = false
+            panel = Panel.None
+            return@LaunchedEffect
+        }
         if (controlsVisible && isPlaying && !inPip && panel == Panel.None) {
             delay(4_000)
             controlsVisible = false
         }
+    }
+
+    LaunchedEffect(snapshotMessage) {
+        val msg = snapshotMessage ?: return@LaunchedEffect
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        snapshotMessage = null
+    }
+
+    LaunchedEffect(subtitleDelayMs, subtitlesEnabled) {
+        if (!subtitlesEnabled) displayedCues = emptyList()
     }
 
     LaunchedEffect(sleepDeadlineMs) {
@@ -466,7 +531,7 @@ fun PlayerScreen(
         onBack()
     }
 
-    val showChrome = controlsVisible && !inPip
+    val showChrome = controlsVisible && !inPip && !controlsLocked
     val isVideoSurface = hasVideo || current?.kind == MediaKind.VIDEO
 
     Box(
@@ -489,12 +554,18 @@ fun PlayerScreen(
                                 resizeMode = aspect.resizeMode
                                 this.player = controller
                                 playerViewRef = this
+                                subtitleView?.visibility =
+                                    if (subtitleDelayMs != 0) android.view.View.INVISIBLE
+                                    else android.view.View.VISIBLE
                             }
                         },
                         update = {
                             it.player = controller
                             it.resizeMode = aspect.resizeMode
                             playerViewRef = it
+                            it.subtitleView?.visibility =
+                                if (subtitleDelayMs != 0) android.view.View.INVISIBLE
+                                else android.view.View.VISIBLE
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -521,12 +592,61 @@ fun PlayerScreen(
                         onVolumeFraction = { setMusicVolume(context, it) },
                         onBrightnessFraction = { setWindowBrightness(activity, it) },
                         onTap = {
+                            if (controlsLocked) return@PlayerGestureLayer
                             controlsVisible = !controlsVisible
                             if (!controlsVisible) panel = Panel.None
                         },
                         currentVolume = { musicVolumeFraction(context) },
                         currentBrightness = { windowBrightness(activity) },
+                        gesturesEnabled = !controlsLocked,
                     )
+                }
+
+                // Custom subtitle overlay (supports delay)
+                if (subtitlesEnabled && displayedCues.isNotEmpty() && subtitleDelayMs != 0) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = if (showChrome) 120.dp else 48.dp)
+                            .padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        displayedCues.forEach { cue ->
+                            val cueText = cue.text?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
+                            Text(
+                                text = cueText,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Control lock unlock zone
+                if (controlsLocked && !inPip) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 28.dp)
+                            .zIndex(8f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .border(1.dp, ForgeAccent.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                            .clickable {
+                                controlsLocked = false
+                                controlsVisible = true
+                            }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Rounded.LockOpen, contentDescription = null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                            Text("Tap to unlock", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                 }
             }
         }
@@ -542,6 +662,7 @@ fun PlayerScreen(
                     abPointA != null -> "A set"
                     else -> null
                 },
+                boostLabel = volumeBoostPercent.takeIf { it > 100 }?.let { "Boost $it%" },
                 moreExpanded = moreMenu,
                 onBack = {
                     val player = controller
@@ -553,6 +674,12 @@ fun PlayerScreen(
                 },
                 onPip = { activity?.enterPip() },
                 onSpeed = { panel = if (panel == Panel.Speed) Panel.None else Panel.Speed },
+                onLock = {
+                    controlsLocked = true
+                    controlsVisible = false
+                    panel = Panel.None
+                    moreMenu = false
+                },
                 onMore = { moreMenu = true },
                 onDismissMore = { moreMenu = false },
                 onSubtitles = {
@@ -583,7 +710,39 @@ fun PlayerScreen(
                     moreMenu = false
                     panel = Panel.AbLoop
                 },
+                onMediaInfo = {
+                    moreMenu = false
+                    panel = Panel.MediaInfo
+                },
+                onBookmarks = {
+                    moreMenu = false
+                    panel = Panel.Bookmarks
+                },
+                onVolumeBoost = {
+                    moreMenu = false
+                    panel = Panel.VolumeBoost
+                },
+                onSubDelay = {
+                    moreMenu = false
+                    panel = Panel.SubDelay
+                },
+                onAudioDelay = {
+                    moreMenu = false
+                    panel = Panel.AudioDelay
+                },
+                onSnapshot = {
+                    moreMenu = false
+                    scope.launch {
+                        val result = FrameCapture.captureToGallery(
+                            context,
+                            playerViewRef,
+                            current?.title ?: "frame",
+                        )
+                        snapshotMessage = result.message
+                    }
+                },
                 showAspect = isVideoSurface,
+                showSnapshot = isVideoSurface,
             )
         }
 
@@ -791,6 +950,7 @@ fun PlayerScreen(
                 enabled = subtitlesEnabled,
                 sizeSp = subtitleSizeSp,
                 hasExternal = externalSubtitleUri != null,
+                delayMs = subtitleDelayMs,
                 onDismiss = { panel = Panel.None },
                 onToggle = { on ->
                     subtitlesEnabled = on
@@ -801,6 +961,7 @@ fun PlayerScreen(
                     selectTrack(controller, C.TRACK_TYPE_TEXT, choice)
                 },
                 onSize = { subtitleSizeSp = it },
+                onDelay = { panel = Panel.SubDelay },
                 onPickExternal = {
                     subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream", "*/*"))
                 },
@@ -842,6 +1003,80 @@ fun PlayerScreen(
                 },
             )
         }
+
+        if (panel == Panel.MediaInfo && showChrome) {
+            val item = current
+            val res = if (videoWidth > 0 && videoHeight > 0) "${videoWidth}×${videoHeight}" else "—"
+            val dur = durationMs.takeIf { it > 0 } ?: item?.durationMs ?: 0L
+            MediaInfoDialog(
+                info = MediaInfoSnapshot(
+                    title = item?.title ?: "—",
+                    resolution = res,
+                    durationLabel = formatDuration(dur),
+                    sizeLabel = formatBytes(item?.sizeBytes ?: 0L),
+                    mime = item?.mimeType?.takeIf { it.isNotBlank() } ?: "—",
+                    container = guessContainer(item?.mimeType.orEmpty(), item?.title.orEmpty()),
+                    videoTracks = videoTrackLabels,
+                    audioTracks = audioTracks.map { it.label },
+                    textTracks = textTracks.map { it.label },
+                ),
+                onDismiss = { panel = Panel.None },
+            )
+        }
+
+        if (panel == Panel.Bookmarks && showChrome) {
+            val uri = current?.uri?.toString().orEmpty()
+            val mediaBookmarks = bookmarkStore.forMedia(allBookmarks, uri)
+            BookmarksDialog(
+                bookmarks = mediaBookmarks,
+                positionMs = positionMs,
+                onDismiss = { panel = Panel.None },
+                onAdd = { name ->
+                    if (uri.isNotEmpty()) {
+                        scope.launch { bookmarkStore.add(uri, positionMs, name) }
+                    }
+                },
+                onRemove = { id -> scope.launch { bookmarkStore.remove(id) } },
+                onJump = { pos ->
+                    controller?.seekTo(pos)
+                    positionMs = pos
+                    panel = Panel.None
+                },
+            )
+        }
+
+        if (panel == Panel.VolumeBoost && showChrome) {
+            VolumeBoostDialog(
+                boostPercent = volumeBoostPercent,
+                onDismiss = { panel = Panel.None },
+                onChange = { p ->
+                    volumeBoostPercent = p
+                    ForgeLoudness.setBoostPercent(p)
+                },
+            )
+        }
+
+        if (panel == Panel.SubDelay && showChrome) {
+            DelayDialog(
+                title = "Subtitle delay",
+                delayMs = subtitleDelayMs,
+                supported = true,
+                note = "Positive delays subtitle display. Negative shows immediately (full early-shift needs renderer access).",
+                onDismiss = { panel = Panel.None },
+                onChange = { subtitleDelayMs = it },
+            )
+        }
+
+        if (panel == Panel.AudioDelay && showChrome) {
+            DelayDialog(
+                title = "Audio delay",
+                delayMs = audioDelayMs,
+                supported = false,
+                note = "Audio delay is not exposed by Media3 MediaController/session player without a custom AudioSink. Skipped gracefully.",
+                onDismiss = { panel = Panel.None },
+                onChange = { audioDelayMs = it },
+            )
+        }
     }
 }
 
@@ -850,13 +1085,16 @@ private fun PlayerTopBar(
     title: String,
     showPip: Boolean,
     showAspect: Boolean,
+    showSnapshot: Boolean,
     speed: Float,
     sleepLabel: String?,
     abLabel: String?,
+    boostLabel: String?,
     moreExpanded: Boolean,
     onBack: () -> Unit,
     onPip: () -> Unit,
     onSpeed: () -> Unit,
+    onLock: () -> Unit,
     onMore: () -> Unit,
     onDismissMore: () -> Unit,
     onSubtitles: () -> Unit,
@@ -866,6 +1104,12 @@ private fun PlayerTopBar(
     onEqualizer: () -> Unit,
     onOrientation: () -> Unit,
     onAbLoop: () -> Unit,
+    onMediaInfo: () -> Unit,
+    onBookmarks: () -> Unit,
+    onVolumeBoost: () -> Unit,
+    onSubDelay: () -> Unit,
+    onAudioDelay: () -> Unit,
+    onSnapshot: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -900,6 +1144,13 @@ private fun PlayerTopBar(
                         color = ForgeAccent,
                     )
                 }
+                if (boostLabel != null) {
+                    Text(
+                        text = boostLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ForgeAccent,
+                    )
+                }
             }
         }
         IconButton(onClick = onSpeed) {
@@ -919,6 +1170,9 @@ private fun PlayerTopBar(
                     tint = Color.White,
                 )
             }
+        }
+        IconButton(onClick = onLock) {
+            Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White)
         }
         Box {
             IconButton(onClick = onMore) {
@@ -980,6 +1234,50 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.ScreenRotation, null, tint = ForgeAccent)
                     },
                 )
+                DropdownMenuItem(
+                    text = { Text("Media info", color = Color.White) },
+                    onClick = onMediaInfo,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Info, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Bookmarks", color = Color.White) },
+                    onClick = onBookmarks,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Bookmark, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Volume boost", color = Color.White) },
+                    onClick = onVolumeBoost,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.VolumeUp, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Subtitle delay", color = Color.White) },
+                    onClick = onSubDelay,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ClosedCaption, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Audio delay", color = Color.White) },
+                    onClick = onAudioDelay,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
+                    },
+                )
+                if (showSnapshot) {
+                    DropdownMenuItem(
+                        text = { Text("Frame snapshot", color = Color.White) },
+                        onClick = onSnapshot,
+                        leadingIcon = {
+                            Icon(Icons.Rounded.CameraAlt, null, tint = ForgeAccent)
+                        },
+                    )
+                }
             }
         }
     }
@@ -1148,10 +1446,12 @@ private fun SubtitleDialog(
     enabled: Boolean,
     sizeSp: Float,
     hasExternal: Boolean,
+    delayMs: Int,
     onDismiss: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onSelectTrack: (TrackChoice) -> Unit,
     onSize: (Float) -> Unit,
+    onDelay: () -> Unit,
     onPickExternal: () -> Unit,
     onClearExternal: () -> Unit,
 ) {
@@ -1209,6 +1509,10 @@ private fun SubtitleDialog(
                             colors = chipColors(),
                         )
                     }
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onDelay) {
+                    Text("Delay · ${formatDelay(delayMs)}", color = ForgeAccent)
                 }
             }
         },
@@ -1441,6 +1745,29 @@ private fun AudioArtwork(title: String) {
             modifier = Modifier.padding(horizontal = 24.dp),
         )
     }
+}
+
+
+private fun collectTrackDetailLabels(tracks: Tracks, type: @C.TrackType Int): List<String> {
+    val out = mutableListOf<String>()
+    tracks.groups.forEach { group ->
+        if (group.type != type) return@forEach
+        for (i in 0 until group.length) {
+            if (!group.isTrackSupported(i)) continue
+            val format = group.getTrackFormat(i)
+            val parts = mutableListOf<String>()
+            format.sampleMimeType?.let { parts += it.substringAfter('/') }
+            if (format.width > 0 && format.height > 0) parts += "${format.width}×${format.height}"
+            if (format.frameRate > 0) parts += "%.0f fps".format(format.frameRate)
+            if (format.bitrate > 0) parts += "${format.bitrate / 1000} kbps"
+            if (format.channelCount > 0) parts += "${format.channelCount} ch"
+            if (format.sampleRate > 0) parts += "${format.sampleRate} Hz"
+            format.language?.takeIf { it.isNotBlank() && it != "und" }?.let { parts += it }
+            format.label?.takeIf { it.isNotBlank() }?.let { parts.add(0, it) }
+            out += parts.joinToString(" · ").ifBlank { "Track ${out.size + 1}" }
+        }
+    }
+    return out
 }
 
 private fun collectTracks(tracks: Tracks, type: @C.TrackType Int): List<TrackChoice> {

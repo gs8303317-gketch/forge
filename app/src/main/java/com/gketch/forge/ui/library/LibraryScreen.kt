@@ -77,9 +77,6 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -1324,6 +1321,7 @@ private fun PlaylistsBody(
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContinueWatchingSection(
     items: List<ContinueWatchItem>,
@@ -1336,7 +1334,7 @@ private fun ContinueWatchingSection(
             Spacer(Modifier.width(8.dp))
             Text("Continue watching", style = MaterialTheme.typography.titleMedium, color = Color.White)
             Spacer(Modifier.width(8.dp))
-            Text("Swipe to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
+            Text("Long-press to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
         Row(
@@ -1344,17 +1342,17 @@ private fun ContinueWatchingSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items.take(16).forEach { cw ->
-                SwipeRemoveCard(
-                    onRemove = { onRemove(cw.item) },
+                Column(
+                    modifier = Modifier
+                        .width(120.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(ForgeGraphite)
+                        .combinedClickable(
+                            onClick = { onPlay(cw.item) },
+                            onLongClick = { onRemove(cw.item) },
+                        )
+                        .padding(8.dp),
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .width(120.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(ForgeGraphite)
-                            .clickable(onClick = { onPlay(cw.item) })
-                            .padding(8.dp),
-                    ) {
                         ThumbBox(
                             item = cw.item,
                             modifier = Modifier.fillMaxWidth().aspectRatio(1f),
@@ -1370,7 +1368,6 @@ private fun ContinueWatchingSection(
                             minLines = 2,
                         )
                     }
-                }
             }
         }
     }
@@ -1411,7 +1408,7 @@ private fun RecentSection(
             Spacer(Modifier.width(8.dp))
             Text("Recently played", style = MaterialTheme.typography.titleMedium, color = Color.White)
             Spacer(Modifier.width(8.dp))
-            Text("Swipe to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
+            Text("Long-press to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
         Row(
@@ -1419,57 +1416,32 @@ private fun RecentSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items.take(12).forEach { item ->
-                SwipeRemoveCard(onRemove = { onRemove(item) }) {
-                    RecentCard(item = item, onClick = { onPlay(item) })
-                }
+                RecentCard(
+                    item = item,
+                    onClick = { onPlay(item) },
+                    onRemove = { onRemove(item) },
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SwipeRemoveCard(
-    onRemove: () -> Unit,
-    content: @Composable () -> Unit,
+private fun RecentCard(
+    item: ForgeMediaItem,
+    onClick: () -> Unit,
+    onRemove: (() -> Unit)? = null,
 ) {
-    val state = rememberSwipeToDismissBoxState(
-        confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart ||
-                value == SwipeToDismissBoxValue.StartToEnd
-            ) {
-                onRemove()
-                true
-            } else {
-                false
-            }
-        },
-    )
-    SwipeToDismissBox(
-        state = state,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF5C1A1A))
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.Delete, contentDescription = "Remove", tint = Color.White)
-            }
-        },
-        content = { content() },
-    )
-}
-
-@Composable
-private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .width(120.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(ForgeGraphite)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { onRemove?.invoke() },
+            )
             .padding(8.dp),
     ) {
         ThumbBox(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(1f))

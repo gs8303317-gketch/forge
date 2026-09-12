@@ -11,7 +11,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Home-screen playback widget (title + play/pause; Glance)
 - Cast entry (MediaRouteButton + Cast framework options; requires Play Services — picker ships; full CastPlayer handoff is best-effort)
 - Crash-safe Cast (disabled when Play Services absent; AppCompat-themed MediaRouteButton never kills playback)
-- Swipe-to-remove on Continue watching / Recently played
+- Long-press to remove on Continue watching / Recently played
 - Playback history screen (full list + clear)
 - Default playback speed setting
 - Remember last library tab (Video / Audio / Playlists / Browse)
@@ -21,6 +21,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Player chrome 1.16.0: longer controls auto-hide (5.5s) paused while menus/dialogs open; optional disable in Settings; lock moved to ⋮ overflow + corner unlock; aspect Fit/Fill/Zoom side rail
 - Player chrome 1.17.0: aspect Fit/Fill/Zoom moved to bottom control row (long-press toast); lock unlock auto-hides with chrome (no permanent floating lock); Settings chrome hide delay 3s/5.5s/8s/Never; leaner top bar (speed in ⋮)
 - Player power 1.18.0: VLC-like stats overlay; mirror/rotate transform; aspect Fit/Fill/Zoom/16:9/4:3/Original; fine speed 0.25–3× (0.05 steps); quick ±100/±500 sub & audio delay; chapter prev/next; queue bottom sheet; buffering HUD + scrubber buffer; ⋮ shortcuts for EQ/sleep/A-B/snapshot/bookmarks; progress state isolated from full-tree ticks
+- Player polish 1.19.0: recently-played tiles no longer stuck red/trash (swipe-in-horizontal-row replaced with long-press remove); left-edge brightness dims video only (overlay, not window); full-screen seek preview on scrub/gesture
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -118,4 +119,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.18.0 (20)
+- **version:** 1.19.0 (21)

@@ -10,7 +10,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
-import android.provider.Settings
+import android.os.SystemClock
 import android.util.Rational
 import android.util.TypedValue
 import android.view.WindowManager
@@ -181,6 +181,7 @@ import com.gketch.forge.ui.theme.ForgeGraphite
 import com.gketch.forge.ui.theme.ForgeMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 private val SPEED_PRESETS = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
@@ -250,6 +251,8 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
+    var surfaceBrightness by remember { mutableFloatStateOf(1f) }
+    val scrubHold = remember { ScrubHold() }
     var hasVideo by remember { mutableStateOf(current?.kind == MediaKind.VIDEO) }
     var speed by remember { mutableFloatStateOf(1f) }
     var panel by remember { mutableStateOf(Panel.None) }
@@ -380,6 +383,7 @@ fun PlayerScreen(
 
     DisposableEffect(activity) {
         val window = activity?.window
+        clearWindowBrightness(activity)
         if (!playAsAudio) {
             window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
@@ -403,6 +407,7 @@ fun PlayerScreen(
         onDispose {
             runCatching { insetsController?.show(WindowInsetsCompat.Type.systemBars()) }
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            clearWindowBrightness(activity)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.updatePipParams(allowed = false)
             activity?.removeOnPictureInPictureModeChangedListener(pipListener)
@@ -478,8 +483,10 @@ fun PlayerScreen(
                         ?: mediaItem?.localConfiguration?.uri?.toString()
                     if (uri != null) {
                         scope.launch {
-                            brightnessStore.get(uri)?.let { setWindowBrightness(activity, it) }
+                            surfaceBrightness = brightnessStore.get(uri) ?: 1f
                         }
+                    } else {
+                        surfaceBrightness = 1f
                     }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                         if (uri != null) {
@@ -561,6 +568,11 @@ fun PlayerScreen(
             textTracks = collectTracks(player.currentTracks, C.TRACK_TYPE_TEXT)
             audioTracks = collectTracks(player.currentTracks, C.TRACK_TYPE_AUDIO)
             onDispose {
+                if (scrubHold.active) {
+                    runCatching { ForgeEngine.setScrubSeek(false) }
+                    runCatching { player.volume = scrubHold.volume }
+                    scrubHold.active = false
+                }
                 val uri = currentUriState.value
                 if (uri != null) {
                     scope.launch {
@@ -658,7 +670,7 @@ fun PlayerScreen(
         }
         playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
         if (startUri != null) {
-            runCatching { brightnessStore.get(startUri)?.let { setWindowBrightness(activity, it) } }
+            runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: 1f }
         }
     }
 
@@ -963,6 +975,19 @@ fun PlayerScreen(
                     AudioArtwork(title = current?.title.orEmpty())
                 }
 
+                // Video-only dim. Must sit on the surface and under chrome/gestures.
+                if (isVideoSurface && surfaceBrightness < 0.999f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Color.Black.copy(
+                                    alpha = (1f - surfaceBrightness).coerceIn(0f, 0.99f),
+                                ),
+                            ),
+                    )
+                }
+
                 // Buffering HUD — crash-isolated spinner over the surface.
                 if (progress.buffering && !inPip) {
                     CircularProgressIndicator(
@@ -1000,8 +1025,23 @@ fun PlayerScreen(
                         positionMs = positionMs,
                         seekSeconds = appSettings.seekSeconds,
                         onSeek = { target ->
-                            controller.seekTo(target)
+                            finishVideoScrub(controller, target, scrubHold)
                             positionMs = target
+                            progress.updateProgress(
+                                target,
+                                durationMs,
+                                progress.bufferedMs,
+                                progress.buffering,
+                                progress.playbackState,
+                            )
+                            scrubbing = false
+                        },
+                        onSeekPreview = { target ->
+                            val dur = durationMs.coerceAtLeast(1L)
+                            scrubbing = true
+                            scrubValue = (target.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                            startVideoScrub(controller, scrubHold)
+                            previewSeekTo(controller, target, scrubHold)
                         },
                         onDoubleTapSeek = { back ->
                             val deltaMs = appSettings.seekSeconds * 1000L
@@ -1015,10 +1055,10 @@ fun PlayerScreen(
                         },
                         onVolumeFraction = { setMusicVolume(context, it) },
                         onBrightnessFraction = { frac ->
-                            setWindowBrightness(activity, frac)
+                            surfaceBrightness = frac.coerceIn(0.01f, 1f)
                             val uri = current?.uri?.toString()
                             if (uri != null) {
-                                scope.launch { brightnessStore.save(uri, frac) }
+                                scope.launch { brightnessStore.save(uri, surfaceBrightness) }
                             }
                         },
                         onHoldSpeedStart = {
@@ -1050,7 +1090,7 @@ fun PlayerScreen(
                             }
                         },
                         currentVolume = { musicVolumeFraction(context) },
-                        currentBrightness = { windowBrightness(activity) },
+                        currentBrightness = { surfaceBrightness },
                         gesturesEnabled = !controlsLocked,
                         controlsVisible = showChrome,
                         excludeTopPx = excludeTopPx,
@@ -1593,11 +1633,16 @@ fun PlayerScreen(
                     scrubbing = true
                     scrubValue = it
                     controlsHideToken++
+                    val dur = progress.durationMs
+                    if (dur > 0L) {
+                        startVideoScrub(controller, scrubHold)
+                        previewSeekTo(controller, (it * dur).toLong(), scrubHold)
+                    }
                 },
                 onScrubEnd = {
                     val dur = progress.durationMs
                     val seekTo = (scrubValue * dur).toLong()
-                    controller?.seekTo(seekTo)
+                    finishVideoScrub(controller, seekTo, scrubHold)
                     positionMs = seekTo
                     progress.updateProgress(seekTo, dur, progress.bufferedMs, progress.buffering, progress.playbackState)
                     scrubbing = false
@@ -3365,22 +3410,60 @@ private fun setMusicVolume(context: Context, fraction: Float) {
     am.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
 }
 
-private fun windowBrightness(activity: Activity?): Float {
-    val window = activity?.window ?: return 0.5f
-    val current = window.attributes.screenBrightness
-    if (current >= 0f) return current.coerceIn(0f, 1f)
-    return try {
-        Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
-    } catch (_: Exception) {
-        0.5f
+/** Undo any leftover 1.18 window dim so chrome stays at system brightness. */
+private fun clearWindowBrightness(activity: Activity?) {
+    val window = activity?.window ?: return
+    val lp = window.attributes
+    if (lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = lp
     }
 }
 
-private fun setWindowBrightness(activity: Activity?, fraction: Float) {
-    val window = activity?.window ?: return
-    val lp = window.attributes
-    lp.screenBrightness = fraction.coerceIn(0.01f, 1f)
-    window.attributes = lp
+private class ScrubHold {
+    var active: Boolean = false
+    var wasPlaying: Boolean = false
+    var volume: Float = 1f
+    var lastSeekMs: Long = -1L
+    var lastSeekAt: Long = 0L
+}
+
+private fun startVideoScrub(player: Player?, hold: ScrubHold) {
+    if (player == null || hold.active) return
+    hold.active = true
+    hold.wasPlaying = player.isPlaying
+    hold.volume = player.volume
+    hold.lastSeekMs = -1L
+    runCatching { player.volume = 0f }
+    if (hold.wasPlaying) runCatching { player.pause() }
+    ForgeEngine.setScrubSeek(true)
+}
+
+private fun previewSeekTo(player: Player?, target: Long, hold: ScrubHold) {
+    if (player == null) return
+    val now = SystemClock.elapsedRealtime()
+    if (hold.lastSeekMs >= 0L &&
+        abs(target - hold.lastSeekMs) < 250L &&
+        now - hold.lastSeekAt < 90L
+    ) {
+        return
+    }
+    hold.lastSeekMs = target
+    hold.lastSeekAt = now
+    runCatching { player.seekTo(target.coerceAtLeast(0L)) }
+}
+
+private fun finishVideoScrub(player: Player?, target: Long, hold: ScrubHold) {
+    runCatching { ForgeEngine.setScrubSeek(false) }
+    if (player != null) {
+        runCatching { player.seekTo(target.coerceAtLeast(0L)) }
+        if (hold.active) {
+            runCatching { player.volume = hold.volume }
+            if (hold.wasPlaying) runCatching { player.play() }
+        }
+    }
+    hold.active = false
+    hold.lastSeekMs = -1L
 }
 
 

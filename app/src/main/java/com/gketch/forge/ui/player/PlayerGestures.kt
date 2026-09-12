@@ -59,6 +59,7 @@ fun PlayerGestureLayer(
     positionMs: Long,
     seekSeconds: Int = 10,
     onSeek: (Long) -> Unit,
+    onSeekPreview: (Long) -> Unit = {},
     onDoubleTapSeek: (back: Boolean) -> Unit,
     onVolumeFraction: (Float) -> Unit,
     onBrightnessFraction: (Float) -> Unit,
@@ -79,6 +80,7 @@ fun PlayerGestureLayer(
     val volumeState = rememberUpdatedState(currentVolume)
     val brightnessState = rememberUpdatedState(currentBrightness)
     val seekState = rememberUpdatedState(onSeek)
+    val previewState = rememberUpdatedState(onSeekPreview)
     val doubleTapState = rememberUpdatedState(onDoubleTapSeek)
     val volCb = rememberUpdatedState(onVolumeFraction)
     val britCb = rememberUpdatedState(onBrightnessFraction)
@@ -207,6 +209,7 @@ fun PlayerGestureLayer(
                                 val deltaMs = ((total.x / size.width) * window * sens).roundToLong()
                                 val target = (startPos + deltaMs).coerceIn(0L, if (dur > 0L) dur else Long.MAX_VALUE)
                                 previewMs = target
+                                previewState.value(target)
                             }
                             GestureKind.Volume -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)

@@ -46,13 +46,36 @@ object ForgeEngine {
         playerRef.get()?.pauseAtEndOfMediaItems = pause
     }
 
-    private fun applyLive(player: ExoPlayer) {
+    /**
+     * Faster keyframe seeks while the user is scrubbing the main surface.
+     * Restores the user's precise-seek preference when [enabled] is false.
+     * Media3 1.5.1 has no setScrubbingModeEnabled — do not upgrade for this.
+     */
+    fun setScrubSeek(enabled: Boolean) {
+        val p = playerRef.get() ?: return
+        try {
+            if (enabled) {
+                p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+            } else {
+                applySeekPrefs(p)
+            }
+        } catch (_: Throwable) {
+            // Optional — never fail playback.
+        }
+    }
+
+    private fun applySeekPrefs(player: ExoPlayer) {
         val prefs = ForgePlayerPrefs.snapshot
-        player.skipSilenceEnabled = prefs.skipSilence
         player.setSeekParameters(
             if (prefs.preciseSeek) androidx.media3.exoplayer.SeekParameters.EXACT
             else androidx.media3.exoplayer.SeekParameters.DEFAULT,
         )
+    }
+
+    private fun applyLive(player: ExoPlayer) {
+        val prefs = ForgePlayerPrefs.snapshot
+        player.skipSilenceEnabled = prefs.skipSilence
+        applySeekPrefs(player)
         audioDelayMsRef.set(prefs.audioDelayMs.coerceIn(MIN_DELAY_MS, MAX_DELAY_MS))
     }
 

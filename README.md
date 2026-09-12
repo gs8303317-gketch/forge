@@ -114,4 +114,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.14.0 (15)
+- **version:** 1.14.1 (16)

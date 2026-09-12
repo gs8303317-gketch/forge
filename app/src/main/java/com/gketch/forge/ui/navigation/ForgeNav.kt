@@ -2,15 +2,23 @@ package com.gketch.forge.ui.navigation
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -23,10 +31,12 @@ import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.ui.library.HistoryScreen
 import com.gketch.forge.ui.library.LibraryScreen
 import com.gketch.forge.ui.lock.PinLockGate
+import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.permissions.PermissionScreen
 import com.gketch.forge.ui.permissions.hasMediaPermission
 import com.gketch.forge.ui.player.PlayerScreen
 import com.gketch.forge.ui.settings.SettingsScreen
+import kotlinx.coroutines.flow.first
 
 object Routes {
     const val PERMISSION = "permission"
@@ -54,10 +64,28 @@ fun ForgeNav(
 
     val pinStore = remember { PinLockStore(context) }
     val pinState by pinStore.state.collectAsState(initial = PinLockState())
+    var pinHydrated by remember { mutableStateOf(false) }
     var sessionUnlocked by remember { mutableStateOf(false) }
     var pendingSettings by remember { mutableStateOf(false) }
     var pendingPlaylists by remember { mutableStateOf(false) }
     var openPlaylistsTick by remember { mutableStateOf(0) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var activityResumed by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { source, _ ->
+            activityResumed = source.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        activityResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(pinStore) {
+        runCatching { pinStore.state.first() }
+        pinHydrated = true
+    }
 
     val blocking = pinState.enabled && !sessionUnlocked
 
@@ -81,6 +109,13 @@ fun ForgeNav(
         val mime = externalMime ?: context.contentResolver.getType(uri)
         openQueue(listOf(forgeItemFromUri(uri, mime = mime)), 0)
         onExternalConsumed()
+    }
+
+    // Hold a black frame until PIN prefs are read and the Activity is resumed.
+    // BiometricPrompt must not be created before onResume (1.14.0 crash).
+    if (!pinHydrated || (blocking && !activityResumed)) {
+        Box(Modifier.fillMaxSize().background(ForgeBlack))
+        return
     }
 
     // Cold start: full-screen lock before any library UI

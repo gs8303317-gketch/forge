@@ -40,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private var appliedLanguage: AppLanguage? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // AppCompatActivity requires Theme.AppCompat (1.14.0 used platform Material → crash).
+        setTheme(R.style.Theme_Forge)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         consumeIntent(intent)

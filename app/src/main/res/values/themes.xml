@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Forge" parent="android:Theme.Material.NoActionBar">
+    <!-- AppCompat parent is required: MainActivity is AppCompatActivity (BiometricPrompt).
+         1.14.0 crashed on every launch with android:Theme.Material.NoActionBar. -->
+    <style name="Theme.Forge" parent="Theme.AppCompat.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/forge_black</item>
         <item name="android:colorPrimary">@color/forge_accent</item>
+        <item name="colorPrimary">@color/forge_accent</item>
+        <item name="android:windowContentOverlay">@null</item>
     </style>
 </resources>

@@ -1,5 +1,7 @@
 package com.gketch.forge.ui.lock
 
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
@@ -19,6 +21,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,12 +38,38 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gketch.forge.R
 import com.gketch.forge.data.PinLockStore
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeMuted
 import kotlinx.coroutines.launch
+
+/**
+ * Compatible authenticators: WEAK | DEVICE_CREDENTIAL.
+ * Mixing BIOMETRIC_STRONG with BIOMETRIC_WEAK (1.14.0) throws on some devices.
+ */
+private const val BIOMETRIC_AUTHENTICATORS =
+    BiometricManager.Authenticators.BIOMETRIC_WEAK or
+        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+
+private tailrec fun Context.findFragmentActivity(): FragmentActivity? = when (this) {
+    is FragmentActivity -> this
+    is ContextWrapper -> baseContext.findFragmentActivity()
+    else -> null
+}
+
+private fun biometricAvailable(context: Context): Boolean {
+    return try {
+        val mgr = BiometricManager.from(context.applicationContext)
+        mgr.canAuthenticate(BIOMETRIC_AUTHENTICATORS) == BiometricManager.BIOMETRIC_SUCCESS
+    } catch (_: Throwable) {
+        false
+    }
+}
 
 @Composable
 fun PinLockGate(
@@ -50,44 +79,55 @@ fun PinLockGate(
     title: String = stringResource(R.string.pin_unlock_title),
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var activityResumed by remember {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { source, _ ->
+            activityResumed = source.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        activityResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val canBiometric = remember(biometricEnabled) {
-        if (!biometricEnabled) return@remember false
-        val mgr = BiometricManager.from(context)
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or
-            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        mgr.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
+        biometricEnabled && biometricAvailable(context)
     }
 
     fun tryBiometric() {
-        val activity = context as? FragmentActivity ?: return
-        val executor = ContextCompat.getMainExecutor(context)
-        val prompt = BiometricPrompt(
-            activity,
-            executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onUnlocked()
-                }
-            },
-        )
-        val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(context.getString(R.string.pin_unlock_title))
-            .setSubtitle(context.getString(R.string.pin_biometric_sub))
-            .setAllowedAuthenticators(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+        if (!activityResumed) return
+        val activity = context.findFragmentActivity() ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        try {
+            val executor = ContextCompat.getMainExecutor(activity)
+            val prompt = BiometricPrompt(
+                activity,
+                executor,
+                object : BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                        onUnlocked()
+                    }
+                },
             )
-            .build()
-        runCatching { prompt.authenticate(info) }
+            val info = BiometricPrompt.PromptInfo.Builder()
+                .setTitle(context.getString(R.string.pin_unlock_title))
+                .setSubtitle(context.getString(R.string.pin_biometric_sub))
+                .setAllowedAuthenticators(BIOMETRIC_AUTHENTICATORS)
+                .build()
+            prompt.authenticate(info)
+        } catch (_: Throwable) {
+            // Missing hardware, library, or Activity not ready — PIN pad stays usable.
+        }
     }
 
-    LaunchedEffect(canBiometric) {
-        if (canBiometric) tryBiometric()
+    LaunchedEffect(canBiometric, activityResumed) {
+        if (canBiometric && activityResumed) tryBiometric()
     }
 
     Column(

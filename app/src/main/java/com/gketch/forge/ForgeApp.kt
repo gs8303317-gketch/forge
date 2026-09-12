@@ -10,8 +10,15 @@ import com.gketch.forge.widget.PlaybackWidgetUpdater
 class ForgeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
-        ForgeCast.init(this)
-        PlaybackWidgetUpdater.init(this)
+        // Never crash the process from Application.onCreate — all init is best-effort.
+        try {
+            ForgeCast.init(this)
+        } catch (_: Throwable) {
+        }
+        try {
+            PlaybackWidgetUpdater.init(this)
+        } catch (_: Throwable) {
+        }
     }
 
     override fun newImageLoader(): ImageLoader =

@@ -12,3 +12,8 @@
 -keep class com.google.android.gms.cast.** { *; }
 -dontwarn com.google.android.gms.**
 -dontwarn androidx.mediarouter.**
+
+-keep class androidx.biometric.** { *; }
+-dontwarn androidx.biometric.**
+-keep class androidx.appcompat.** { *; }
+-keep class androidx.fragment.app.** { *; }

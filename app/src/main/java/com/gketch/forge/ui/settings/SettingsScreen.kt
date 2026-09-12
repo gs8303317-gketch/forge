@@ -714,7 +714,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.14 · audio browsers · gapless · crossfade · loudness norm · PIN · cache · lyrics",
+                    text = "1.14.1 · startup crash fix · PIN/biometric safety",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

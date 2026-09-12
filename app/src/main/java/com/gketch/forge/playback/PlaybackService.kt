@@ -49,6 +49,11 @@ class PlaybackService : MediaSessionService() {
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     maybeStopWhenIdle()
+                    PlaybackWidgetUpdater.publishFromPlayer(this@PlaybackService, exo)
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    PlaybackWidgetUpdater.publishFromPlayer(this@PlaybackService, exo)
                 }
 
                 override fun onMediaItemTransition(
@@ -56,6 +61,17 @@ class PlaybackService : MediaSessionService() {
                     reason: Int,
                 ) {
                     maybeStopWhenIdle()
+                    PlaybackWidgetUpdater.publishFromPlayer(this@PlaybackService, exo)
+                }
+
+                override fun onEvents(player: Player, events: Player.Events) {
+                    if (events.containsAny(
+                            Player.EVENT_MEDIA_METADATA_CHANGED,
+                            Player.EVENT_TIMELINE_CHANGED,
+                        )
+                    ) {
+                        PlaybackWidgetUpdater.publishFromPlayer(this@PlaybackService, exo)
+                    }
                 }
             },
         )

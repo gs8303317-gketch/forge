@@ -188,6 +188,26 @@ fun SettingsScreen(onBack: () -> Unit) {
                     checked = app.autoplayNext,
                     onChecked = { scope.launch { appStore.setAutoplayNext(it) } },
                 )
+                Spacer(Modifier.height(14.dp))
+                Text("Default playback speed", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppSettingsStore.SPEED_OPTIONS.forEach { spd ->
+                        FilterChip(
+                            selected = app.defaultPlaybackSpeed == spd,
+                            onClick = { scope.launch { appStore.setDefaultPlaybackSpeed(spd) } },
+                            label = {
+                                Text(
+                                    if (spd == spd.toInt().toFloat()) "${spd.toInt()}×" else "${spd}×",
+                                )
+                            },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
             }
 
             SettingsCard(title = "Playback engine") {

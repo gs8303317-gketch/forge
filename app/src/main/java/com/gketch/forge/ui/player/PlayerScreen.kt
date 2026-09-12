@@ -112,6 +112,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
@@ -212,6 +213,7 @@ fun PlayerScreen(
     var holdBoosting by remember { mutableStateOf(false) }
 
     var isPlaying by remember { mutableStateOf(true) }
+    var playerError by remember { mutableStateOf<String?>(null) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -292,6 +294,7 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(Unit) {
+        var appliedDefaultSpeed = false
         appSettingsStore.settings.collect { s ->
             appSettings = s
             subtitleSizeSp = s.subtitleSizeSp
@@ -299,6 +302,11 @@ fun PlayerScreen(
             subtitleBackground = s.subtitleBackground
             subtitlePosition = s.subtitlePosition
             ForgeEngine.setPauseAtEndOfMediaItems(!s.autoplayNext)
+            if (!appliedDefaultSpeed) {
+                appliedDefaultSpeed = true
+                speed = s.defaultPlaybackSpeed
+                savedSpeed = s.defaultPlaybackSpeed
+            }
         }
     }
 
@@ -315,12 +323,14 @@ fun PlayerScreen(
     DisposableEffect(activity) {
         val window = activity?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val insetsController = window?.let {
-            WindowCompat.getInsetsController(it, it.decorView).apply {
-                systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                hide(WindowInsetsCompat.Type.systemBars())
-            }
+        val insetsController = window?.let { w ->
+            runCatching {
+                WindowCompat.getInsetsController(w, w.decorView).apply {
+                    systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    hide(WindowInsetsCompat.Type.systemBars())
+                }
+            }.getOrNull()
         }
         val pipListener = Consumer<PictureInPictureModeChangedInfo> { info ->
             inPip = info.isInPictureInPictureMode
@@ -331,7 +341,7 @@ fun PlayerScreen(
         }
         activity?.addOnPictureInPictureModeChangedListener(pipListener)
         onDispose {
-            insetsController?.show(WindowInsetsCompat.Type.systemBars())
+            runCatching { insetsController?.show(WindowInsetsCompat.Type.systemBars()) }
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.updatePipParams(allowed = false)
@@ -350,7 +360,19 @@ fun PlayerScreen(
                     isPlaying = playing
                 }
 
+                override fun onPlayerError(error: PlaybackException) {
+                    playerError = error.message?.takeIf { it.isNotBlank() }
+                        ?: error.cause?.message
+                        ?: "Playback failed (code ${error.errorCode})"
+                    isPlaying = false
+                }
+
+                override fun onPlayerErrorChanged(error: PlaybackException?) {
+                    if (error == null) playerError = null
+                }
+
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    playerError = null
                     abPointA = null
                     abPointB = null
                     abLoopEnabled = false
@@ -483,15 +505,23 @@ fun PlayerScreen(
         externalSubtitleUri = null
         resumePromptMs = null
         pendingResumeUri = null
+        playerError = null
 
-        val items = playQueue.map { item ->
+        if (playQueue.isEmpty()) {
+            playerError = "Nothing to play"
+            return@LaunchedEffect
+        }
+
+        val items = playQueue.mapNotNull { item ->
+            val uri = item.uri
+            if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) return@mapNotNull null
             MediaItem.Builder()
-                .setUri(item.uri)
-                .setMediaId(item.uri.toString())
+                .setUri(uri)
+                .setMediaId(uri.toString())
                 .setMimeType(item.mimeType.takeIf { it.isNotBlank() && '*' !in it })
                 .setMediaMetadata(
                     MediaMetadata.Builder()
-                        .setTitle(item.title)
+                        .setTitle(item.title.ifBlank { "Media" })
                         .setArtist("Forge")
                         .setArtworkUri(item.albumArtUri)
                         .setIsPlayable(true)
@@ -499,30 +529,45 @@ fun PlayerScreen(
                 )
                 .build()
         }
-        val startUri = playQueue.getOrNull(startIndex)?.uri?.toString()
-        val resumeAt = if (startUri != null) resumeStore.getPosition(startUri) else 0L
+        if (items.isEmpty()) {
+            playerError = "Invalid media URI"
+            return@LaunchedEffect
+        }
+        val safeStart = startIndex.coerceIn(0, items.lastIndex)
+        val startUri = playQueue.getOrNull(safeStart)?.uri?.toString()
+            ?: items.getOrNull(safeStart)?.mediaId
+        val resumeAt = try {
+            if (startUri != null) resumeStore.getPosition(startUri) else 0L
+        } catch (_: Exception) {
+            0L
+        }
         val prompt = resumeAt >= ResumeStore.RESUME_PROMPT_MS
         ForgeEngine.setPauseAtEndOfMediaItems(!appSettings.autoplayNext)
-        if (prompt) {
-            player.setMediaItems(items, startIndex.coerceAtLeast(0), 0L)
-            player.prepare()
-            player.setPlaybackSpeed(speed)
-            player.repeatMode = repeatMode
-            player.shuffleModeEnabled = shuffleOn
-            player.pause()
-            pendingResumeUri = startUri
-            resumePromptMs = resumeAt
-        } else {
-            player.setMediaItems(items, startIndex.coerceAtLeast(0), resumeAt.coerceAtLeast(0L))
-            player.prepare()
-            player.setPlaybackSpeed(speed)
-            player.repeatMode = repeatMode
-            player.shuffleModeEnabled = shuffleOn
-            player.play()
+        try {
+            if (prompt) {
+                player.setMediaItems(items, safeStart, 0L)
+                player.prepare()
+                player.setPlaybackSpeed(speed)
+                player.repeatMode = repeatMode
+                player.shuffleModeEnabled = shuffleOn
+                player.pause()
+                pendingResumeUri = startUri
+                resumePromptMs = resumeAt
+            } else {
+                player.setMediaItems(items, safeStart, resumeAt.coerceAtLeast(0L))
+                player.prepare()
+                player.setPlaybackSpeed(speed)
+                player.repeatMode = repeatMode
+                player.shuffleModeEnabled = shuffleOn
+                player.play()
+            }
+        } catch (t: Throwable) {
+            playerError = t.message ?: "Could not start playback"
+            return@LaunchedEffect
         }
-        playQueue.getOrNull(startIndex)?.let { recentStore.record(it) }
+        playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
         if (startUri != null) {
-            brightnessStore.get(startUri)?.let { setWindowBrightness(activity, it) }
+            runCatching { brightnessStore.get(startUri)?.let { setWindowBrightness(activity, it) } }
         }
     }
 
@@ -671,7 +716,32 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(ForgeBlack),
     ) {
-        if (controller == null) {
+        val fatalError = playerError
+        if (fatalError != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Can't play this media",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = fatalError,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ForgeMuted,
+                )
+                Spacer(Modifier.height(20.dp))
+                TextButton(onClick = onBack) {
+                    Text("Go back", color = ForgeAccent)
+                }
+            }
+        } else if (controller == null) {
             CircularProgressIndicator(
                 color = ForgeAccent,
                 modifier = Modifier.align(Alignment.Center),

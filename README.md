@@ -10,6 +10,12 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Continue watching row (unfinished videos with progress on thumb)
 - Home-screen playback widget (title + play/pause; Glance)
 - Cast entry (MediaRouteButton + Cast framework options; requires Play Services — picker ships; full CastPlayer handoff is best-effort)
+- Crash-safe Cast (disabled when Play Services absent; AppCompat-themed MediaRouteButton never kills playback)
+- Swipe-to-remove on Continue watching / Recently played
+- Playback history screen (full list + clear)
+- Default playback speed setting
+- Remember last library tab (Video / Audio / Playlists / Browse)
+- Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
 - Favorites with home section
@@ -82,4 +88,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.9.0 (10)
+- **version:** 1.10.0 (11)

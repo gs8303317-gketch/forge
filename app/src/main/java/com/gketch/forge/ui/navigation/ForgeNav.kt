@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.forgeItemFromUri
+import com.gketch.forge.ui.library.HistoryScreen
 import com.gketch.forge.ui.library.LibraryScreen
 import com.gketch.forge.ui.permissions.PermissionScreen
 import com.gketch.forge.ui.permissions.hasMediaPermission
@@ -23,6 +24,7 @@ object Routes {
     const val PERMISSION = "permission"
     const val LIBRARY = "library"
     const val SETTINGS = "settings"
+    const val HISTORY = "history"
     const val PLAYER = "player"
 }
 
@@ -75,6 +77,7 @@ fun ForgeNav(
             LibraryScreen(
                 onPlay = { items, index -> openQueue(items, index) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenHistory = { navController.navigate(Routes.HISTORY) },
                 onRequestPermission = { navController.navigate(Routes.PERMISSION) },
                 onExpandPlayer = {
                     if (session != null) {
@@ -85,6 +88,12 @@ fun ForgeNav(
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.HISTORY) {
+            HistoryScreen(
+                onBack = { navController.popBackStack() },
+                onPlay = { item -> openQueue(listOf(item), 0) },
+            )
         }
         composable(Routes.PLAYER) {
             val current = session

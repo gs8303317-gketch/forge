@@ -111,11 +111,23 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
+            var appliedTab = false
             settingsStore.settings.collect { prefs ->
                 _state.update {
+                    val tab = if (!appliedTab) {
+                        appliedTab = true
+                        runCatching { LibraryTab.valueOf(prefs.lastLibraryTab) }.getOrDefault(LibraryTab.VIDEO)
+                    } else it.tab
+                    val filter = when (tab) {
+                        LibraryTab.VIDEO -> LibraryFilter.VIDEO
+                        LibraryTab.AUDIO -> LibraryFilter.AUDIO
+                        else -> it.filter
+                    }
                     it.copy(
                         sort = prefs.librarySort,
-                        filtered = applyFilterAndSort(it.items, it.filter, prefs.librarySort),
+                        tab = tab,
+                        filter = filter,
+                        filtered = applyFilterAndSort(it.items, filter, prefs.librarySort),
                     )
                 }
             }
@@ -198,6 +210,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setTab(tab: LibraryTab) {
+        viewModelScope.launch { settingsStore.setLastLibraryTab(tab.name) }
         _state.update {
             val filter = when (tab) {
                 LibraryTab.VIDEO -> LibraryFilter.VIDEO
@@ -214,6 +227,20 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 selecting = false,
                 selectedKeys = emptySet(),
             )
+        }
+    }
+
+    fun removeRecent(item: ForgeMediaItem) {
+        viewModelScope.launch { recentStore.remove(item.uri) }
+    }
+
+    fun removeContinueWatching(item: ForgeMediaItem) {
+        viewModelScope.launch {
+            resumeStore.clear(item.uri.toString())
+            val snap = resumeStore.positionSnapshot()
+            _state.update {
+                it.copy(continueWatching = resumeStore.continueWatching(it.items, snap, videosOnly = true))
+            }
         }
     }
 

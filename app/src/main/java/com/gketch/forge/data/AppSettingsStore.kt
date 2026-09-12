@@ -68,6 +68,8 @@ data class AppSettings(
     val sleepFadeEnabled: Boolean = false,
     val sleepFadeSeconds: Int = 10,
     val sleepEndAction: SleepEndAction = SleepEndAction.PAUSE,
+    val defaultPlaybackSpeed: Float = 1.0f,
+    val lastLibraryTab: String = "VIDEO",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -82,6 +84,8 @@ data class AppSettings(
         .put("sleepFadeEnabled", sleepFadeEnabled)
         .put("sleepFadeSeconds", sleepFadeSeconds)
         .put("sleepEndAction", sleepEndAction.name)
+        .put("defaultPlaybackSpeed", defaultPlaybackSpeed.toDouble())
+        .put("lastLibraryTab", lastLibraryTab)
 }
 
 class AppSettingsStore(context: Context) {
@@ -123,6 +127,10 @@ class AppSettingsStore(context: Context) {
             sleepEndAction = runCatching {
                 SleepEndAction.valueOf(p[KEY_SLEEP_END] ?: SleepEndAction.PAUSE.name)
             }.getOrDefault(SleepEndAction.PAUSE),
+            defaultPlaybackSpeed = (p[KEY_DEFAULT_SPEED] ?: 1.0f).let { s ->
+                listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).minBy { kotlin.math.abs(it - s) }
+            },
+            lastLibraryTab = p[KEY_LAST_TAB] ?: "VIDEO",
         )
     }
 
@@ -182,6 +190,15 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_SLEEP_END] = value.name }
     }
 
+    suspend fun setDefaultPlaybackSpeed(value: Float) {
+        val v = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).minBy { kotlin.math.abs(it - value) }
+        store.edit { it[KEY_DEFAULT_SPEED] = v }
+    }
+
+    suspend fun setLastLibraryTab(value: String) {
+        store.edit { it[KEY_LAST_TAB] = value }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -196,6 +213,8 @@ class AppSettingsStore(context: Context) {
             if (o.has("sleepFadeEnabled")) p[KEY_SLEEP_FADE] = o.optBoolean("sleepFadeEnabled", false)
             if (o.has("sleepFadeSeconds")) p[KEY_SLEEP_FADE_SEC] = o.optInt("sleepFadeSeconds", 10)
             if (o.has("sleepEndAction")) p[KEY_SLEEP_END] = o.optString("sleepEndAction")
+            if (o.has("defaultPlaybackSpeed")) p[KEY_DEFAULT_SPEED] = o.optDouble("defaultPlaybackSpeed", 1.0).toFloat()
+            if (o.has("lastLibraryTab")) p[KEY_LAST_TAB] = o.optString("lastLibraryTab", "VIDEO")
         }
     }
 
@@ -212,7 +231,10 @@ class AppSettingsStore(context: Context) {
         private val KEY_SLEEP_FADE = booleanPreferencesKey("sleep_fade")
         private val KEY_SLEEP_FADE_SEC = intPreferencesKey("sleep_fade_sec")
         private val KEY_SLEEP_END = stringPreferencesKey("sleep_end_action")
+        private val KEY_DEFAULT_SPEED = floatPreferencesKey("default_playback_speed")
+        private val KEY_LAST_TAB = stringPreferencesKey("last_library_tab")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)
+        val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     }
 }

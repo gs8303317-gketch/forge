@@ -28,13 +28,20 @@ class RecentStore(context: Context) {
         }
     }
 
+    suspend fun remove(uri: Uri) {
+        store.edit { prefs ->
+            val current = decode(prefs[KEY] ?: "[]").filterNot { it.uri == uri }
+            prefs[KEY] = encode(current)
+        }
+    }
+
     suspend fun clear() {
         store.edit { it.remove(KEY) }
     }
 
     companion object {
         private val KEY = stringPreferencesKey("recent_json")
-        const val MAX_ITEMS = 20
+        const val MAX_ITEMS = 100
 
         private fun encode(items: List<ForgeMediaItem>): String {
             val arr = JSONArray()

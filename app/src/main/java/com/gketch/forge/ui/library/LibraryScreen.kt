@@ -67,6 +67,9 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -130,6 +133,7 @@ import java.util.concurrent.TimeUnit
 fun LibraryScreen(
     onPlay: (items: List<ForgeMediaItem>, index: Int) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit = {},
     onRequestPermission: () -> Unit,
     onExpandPlayer: () -> Unit = {},
     viewModel: LibraryViewModel = viewModel(),
@@ -360,6 +364,14 @@ fun LibraryScreen(
                                     },
                                     leadingIcon = { Icon(Icons.Rounded.Link, null, tint = ForgeAccent) },
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Playback history", color = Color.White) },
+                                    onClick = {
+                                        overflowMenu = false
+                                        onOpenHistory()
+                                    },
+                                    leadingIcon = { Icon(Icons.Rounded.History, null, tint = ForgeAccent) },
+                                )
                                 if (state.recent.isNotEmpty()) {
                                     DropdownMenuItem(
                                         text = { Text("Clear history", color = Color.White) },
@@ -367,7 +379,7 @@ fun LibraryScreen(
                                             overflowMenu = false
                                             showClearHistory = true
                                         },
-                                        leadingIcon = { Icon(Icons.Rounded.History, null, tint = ForgeAccent) },
+                                        leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = ForgeAccent) },
                                     )
                                 }
                             }
@@ -409,6 +421,8 @@ fun LibraryScreen(
                 onAddToPlaylist = { addToPlaylistItem = it },
                 onToggleSelect = viewModel::toggleSelected,
                 onBeginSelect = viewModel::beginSelection,
+                onRemoveRecent = viewModel::removeRecent,
+                onRemoveContinue = viewModel::removeContinueWatching,
             )
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
@@ -610,6 +624,8 @@ private fun LibraryBody(
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
     onToggleSelect: (ForgeMediaItem) -> Unit,
     onBeginSelect: (ForgeMediaItem) -> Unit,
+    onRemoveRecent: (ForgeMediaItem) -> Unit,
+    onRemoveContinue: (ForgeMediaItem) -> Unit,
 ) {
     val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
@@ -653,12 +669,13 @@ private fun LibraryBody(
                         ContinueWatchingSection(
                             items = continueWatching,
                             onPlay = { onPlay(listOf(it), 0) },
+                            onRemove = onRemoveContinue,
                         )
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "recent-header") {
-                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) })
+                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) }, onRemove = onRemoveRecent)
                     }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "lib-header") {
@@ -702,12 +719,13 @@ private fun LibraryBody(
                         ContinueWatchingSection(
                             items = continueWatching,
                             onPlay = { onPlay(listOf(it), 0) },
+                            onRemove = onRemoveContinue,
                         )
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
                     item(key = "recent-header") {
-                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) })
+                        RecentSection(items = kindRecent, onPlay = { onPlay(listOf(it), 0) }, onRemove = onRemoveRecent)
                     }
                 }
                 item(key = "lib-header") {
@@ -1021,12 +1039,15 @@ private fun PlaylistsBody(
 private fun ContinueWatchingSection(
     items: List<ContinueWatchItem>,
     onPlay: (ForgeMediaItem) -> Unit,
+    onRemove: (ForgeMediaItem) -> Unit = {},
 ) {
     Column(modifier = Modifier.padding(bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.PlayCircle, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Continue watching", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Spacer(Modifier.width(8.dp))
+            Text("Swipe to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
         Row(
@@ -1034,28 +1055,32 @@ private fun ContinueWatchingSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items.take(16).forEach { cw ->
-                Column(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(ForgeGraphite)
-                        .clickable(onClick = { onPlay(cw.item) })
-                        .padding(8.dp),
+                SwipeRemoveCard(
+                    onRemove = { onRemove(cw.item) },
                 ) {
-                    ThumbBox(
-                        item = cw.item,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                        progress = cw.progress,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = cw.item.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        minLines = 2,
-                    )
+                    Column(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(ForgeGraphite)
+                            .clickable(onClick = { onPlay(cw.item) })
+                            .padding(8.dp),
+                    ) {
+                        ThumbBox(
+                            item = cw.item,
+                            modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                            progress = cw.progress,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = cw.item.title,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            minLines = 2,
+                        )
+                    }
                 }
             }
         }
@@ -1089,12 +1114,15 @@ private fun FavoritesSection(
 private fun RecentSection(
     items: List<ForgeMediaItem>,
     onPlay: (ForgeMediaItem) -> Unit,
+    onRemove: (ForgeMediaItem) -> Unit = {},
 ) {
     Column(modifier = Modifier.padding(bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.History, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Recently played", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Spacer(Modifier.width(8.dp))
+            Text("Swipe to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
         Row(
@@ -1102,10 +1130,47 @@ private fun RecentSection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items.take(12).forEach { item ->
-                RecentCard(item = item, onClick = { onPlay(item) })
+                SwipeRemoveCard(onRemove = { onRemove(item) }) {
+                    RecentCard(item = item, onClick = { onPlay(item) })
+                }
             }
         }
     }
+}
+
+@Composable
+private fun SwipeRemoveCard(
+    onRemove: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart ||
+                value == SwipeToDismissBoxValue.StartToEnd
+            ) {
+                onRemove()
+                true
+            } else {
+                false
+            }
+        },
+    )
+    SwipeToDismissBox(
+        state = state,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF5C1A1A))
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Delete, contentDescription = "Remove", tint = Color.White)
+            }
+        },
+        content = { content() },
+    )
 }
 
 @Composable

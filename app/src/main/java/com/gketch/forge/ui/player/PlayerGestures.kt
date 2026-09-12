@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,6 +46,7 @@ import com.gketch.forge.ui.theme.ForgeGraphite
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 private enum class GestureKind { Seek, Volume, Brightness }
 
@@ -52,10 +54,13 @@ private enum class GestureKind { Seek, Volume, Brightness }
 fun PlayerGestureLayer(
     durationMs: Long,
     positionMs: Long,
+    seekSeconds: Int = 10,
     onSeek: (Long) -> Unit,
     onDoubleTapSeek: (back: Boolean) -> Unit,
     onVolumeFraction: (Float) -> Unit,
     onBrightnessFraction: (Float) -> Unit,
+    onHoldSpeedStart: () -> Unit = {},
+    onHoldSpeedEnd: () -> Unit = {},
     onTap: () -> Unit,
     currentVolume: () -> Float,
     currentBrightness: () -> Float,
@@ -71,11 +76,15 @@ fun PlayerGestureLayer(
     val volCb = rememberUpdatedState(onVolumeFraction)
     val britCb = rememberUpdatedState(onBrightnessFraction)
     val tapState = rememberUpdatedState(onTap)
+    val holdStart = rememberUpdatedState(onHoldSpeedStart)
+    val holdEnd = rememberUpdatedState(onHoldSpeedEnd)
+    val seekSecState = rememberUpdatedState(seekSeconds)
 
     var kind by remember { mutableStateOf<GestureKind?>(null) }
     var previewMs by remember { mutableLongStateOf(0L) }
     var barFraction by remember { mutableFloatStateOf(0f) }
     var doubleTapFlash by remember { mutableStateOf<Boolean?>(null) }
+    var holdSpeedActive by remember { mutableStateOf(false) }
 
     LaunchedEffect(doubleTapFlash) {
         if (doubleTapFlash != null) {
@@ -98,6 +107,25 @@ fun PlayerGestureLayer(
                         doubleTapState.value(back)
                     },
                     onTap = { tapState.value() },
+                    onPress = {
+                        if (!enabledState.value) {
+                            tryAwaitRelease()
+                            return@detectTapGestures
+                        }
+                        val releasedEarly = withTimeoutOrNull(400) {
+                            tryAwaitRelease()
+                            true
+                        }
+                        if (releasedEarly == true) return@detectTapGestures
+                        holdSpeedActive = true
+                        holdStart.value()
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            holdSpeedActive = false
+                            holdEnd.value()
+                        }
+                    },
                 )
             }
             .pointerInput(gesturesEnabled) {
@@ -173,15 +201,43 @@ fun PlayerGestureLayer(
             null -> Unit
         }
         when (doubleTapFlash) {
-            true -> DoubleTapHud(back = true)
-            false -> DoubleTapHud(back = false)
+            true -> DoubleTapHud(back = true, seconds = seekSecState.value)
+            false -> DoubleTapHud(back = false, seconds = seekSecState.value)
             null -> Unit
+        }
+        if (holdSpeedActive) {
+            HoldSpeedHud()
         }
     }
 }
 
 @Composable
-private fun DoubleTapHud(back: Boolean) {
+private fun HoldSpeedHud() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        RowHud {
+            Icon(Icons.Rounded.Speed, null, tint = ForgeAccent)
+            Spacer(Modifier.height(4.dp))
+            Text("2×", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun RowHud(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .padding(top = 72.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun DoubleTapHud(back: Boolean, seconds: Int) {
     Box(
         Modifier.fillMaxSize(),
         contentAlignment = if (back) Alignment.CenterStart else Alignment.CenterEnd,
@@ -201,7 +257,7 @@ private fun DoubleTapHud(back: Boolean) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = if (back) "−10s" else "+10s",
+                text = if (back) "−${seconds}s" else "+${seconds}s",
                 style = MaterialTheme.typography.labelLarge,
                 color = Color.White,
             )

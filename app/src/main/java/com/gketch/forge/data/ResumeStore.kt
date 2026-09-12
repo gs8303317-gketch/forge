@@ -33,9 +33,15 @@ class ResumeStore(context: Context) {
         store.edit { it.remove(key) }
     }
 
+    suspend fun clearAll() {
+        store.edit { it.clear() }
+    }
+
     companion object {
         const val MIN_SAVE_MS = 3_000L
         const val NEAR_END_MS = 5_000L
+        /** Positions above this prompt Continue vs Start over. */
+        const val RESUME_PROMPT_MS = 5_000L
 
         fun keyFor(uri: String): String {
             val digest = MessageDigest.getInstance("SHA-256").digest(uri.toByteArray())

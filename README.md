@@ -20,17 +20,25 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Volume boost above 100% (LoudnessEnhancer, capped)
 - Control lock (gestures/controls off; tap zone to unlock)
 - Frame snapshot to Pictures/Forge
-- Search and filter (All / Videos / Audio)
-- Recently played home section
+- Search, filter (All / Videos / Audio), and sort (name / date / size / duration)
+- Recently played home section with clear history (+ optional resume wipe)
+- Resume dialog (Continue vs Start over) when position > a few seconds
+- Hold player surface for temporary 2× speed
+- Subtitle style: size, color, background, vertical position
+- Queue reorder (move up/down) in player + playlists
+- Share current media via Android share sheet
+- Configurable double-tap seek (±5/10/15/30s)
+- Per-video brightness memory
+- Autoplay next toggle
 - Open network streams (`http`, `https`, `rtsp`)
 - Media3 player: play/pause, seek, next/prev, 0.5×–2× speed
 - Multi-band equalizer with presets (system Equalizer API)
 - A-B loop (set A / set B / clear)
 - Orientation lock while playing (auto / portrait / landscape)
-- Subtitles: embedded tracks + external `.srt`/`.vtt`, toggle, size
+- Subtitles: embedded tracks + external `.srt`/`.vtt`, toggle, size/color/background/position
 - Audio track selection
 - Repeat (off / one / all) and shuffle
-- Double-tap seek (−10s / +10s)
+- Double-tap seek (configurable ±5/10/15/30s)
 - Aspect ratio: Fit / Fill / Zoom
 - Sleep timer (15/30/45/60 min)
 - Player gestures: brightness (left), volume (right), horizontal seek
@@ -58,4 +66,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.5.0 (6)
+- **version:** 1.6.0 (7)

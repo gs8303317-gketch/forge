@@ -85,6 +85,21 @@ class PlaylistStore(context: Context) {
         }
     }
 
+    suspend fun moveItem(playlistId: String, fromIndex: Int, toIndex: Int) {
+        mutate { list ->
+            list.map { pl ->
+                if (pl.id != playlistId) pl
+                else {
+                    val items = pl.items.toMutableList()
+                    if (fromIndex !in items.indices || toIndex !in items.indices) return@map pl
+                    val item = items.removeAt(fromIndex)
+                    items.add(toIndex, item)
+                    pl.copy(items = items, updatedAt = System.currentTimeMillis())
+                }
+            }
+        }
+    }
+
     private suspend fun mutate(block: (List<ForgePlaylist>) -> List<ForgePlaylist>) {
         store.edit { prefs ->
             val current = decode(prefs[KEY] ?: "[]")

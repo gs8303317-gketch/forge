@@ -48,7 +48,11 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.HighQuality
@@ -90,6 +94,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.content.ContextCompat
@@ -118,6 +123,12 @@ import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
+import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.AppSettingsStore
+import com.gketch.forge.data.BrightnessStore
+import com.gketch.forge.data.SubtitleBackground
+import com.gketch.forge.data.SubtitleColor
+import com.gketch.forge.data.SubtitlePosition
 import com.gketch.forge.data.BookmarkStore
 import com.gketch.forge.data.MediaBookmark
 import com.gketch.forge.playback.ForgeLoudness
@@ -146,7 +157,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue }
 
 private enum class OrientationLock(val label: String) {
     AUTO("Auto"),
@@ -172,10 +183,18 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     val resumeStore = remember { ResumeStore(context) }
     val recentStore = remember { RecentStore(context) }
+    val brightnessStore = remember { BrightnessStore(context) }
+    val appSettingsStore = remember { AppSettingsStore(context) }
     val controller = rememberPlayerController()
 
+    var playQueue by remember { mutableStateOf(queue) }
     var index by remember { mutableIntStateOf(startIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))) }
-    val current = queue.getOrNull(index)
+    val current = playQueue.getOrNull(index)
+    var appSettings by remember { mutableStateOf(AppSettings()) }
+    var resumePromptMs by remember { mutableStateOf<Long?>(null) }
+    var pendingResumeUri by remember { mutableStateOf<String?>(null) }
+    var savedSpeed by remember { mutableFloatStateOf(1f) }
+    var holdBoosting by remember { mutableStateOf(false) }
 
     var isPlaying by remember { mutableStateOf(true) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -192,6 +211,9 @@ fun PlayerScreen(
     var shuffleOn by remember { mutableStateOf(false) }
     var aspect by remember { mutableStateOf(AspectMode.FIT) }
     var subtitleSizeSp by remember { mutableFloatStateOf(20f) }
+    var subtitleColor by remember { mutableStateOf(SubtitleColor.WHITE) }
+    var subtitleBackground by remember { mutableStateOf(SubtitleBackground.SEMI) }
+    var subtitlePosition by remember { mutableStateOf(SubtitlePosition.BOTTOM) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var externalSubtitleUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var textTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
@@ -251,6 +273,17 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(Unit) {
+        appSettingsStore.settings.collect { s ->
+            appSettings = s
+            subtitleSizeSp = s.subtitleSizeSp
+            subtitleColor = s.subtitleColor
+            subtitleBackground = s.subtitleBackground
+            subtitlePosition = s.subtitlePosition
+            ForgeEngine.setPauseAtEndOfMediaItems(!s.autoplayNext)
+        }
+    }
+
+    LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -295,19 +328,28 @@ fun PlayerScreen(
                     abLoopEnabled = false
                     displayedCues = emptyList()
                     val newIndex = player.currentMediaItemIndex
-                    if (newIndex in queue.indices) {
+                    if (newIndex in playQueue.indices) {
                         index = newIndex
-                        queue.getOrNull(newIndex)?.let { item ->
+                        playQueue.getOrNull(newIndex)?.let { item ->
                             scope.launch { recentStore.record(item) }
                         }
                     }
+                    val uri = mediaItem?.mediaId
+                        ?: mediaItem?.localConfiguration?.uri?.toString()
+                    if (uri != null) {
+                        scope.launch {
+                            brightnessStore.get(uri)?.let { setWindowBrightness(activity, it) }
+                        }
+                    }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
-                        val uri = mediaItem?.mediaId
-                            ?: mediaItem?.localConfiguration?.uri?.toString()
                         if (uri != null) {
                             scope.launch {
                                 val saved = resumeStore.getPosition(uri)
-                                if (saved >= ResumeStore.MIN_SAVE_MS) {
+                                if (saved >= ResumeStore.RESUME_PROMPT_MS) {
+                                    player.pause()
+                                    pendingResumeUri = uri
+                                    resumePromptMs = saved
+                                } else if (saved >= ResumeStore.MIN_SAVE_MS) {
                                     player.seekTo(saved)
                                 }
                             }
@@ -383,16 +425,23 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controller, queue, startIndex) {
+    LaunchedEffect(queue, startIndex) {
+        playQueue = queue
+        index = startIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+    }
+
+    LaunchedEffect(controller, playQueue, startIndex) {
         val player = controller ?: return@LaunchedEffect
-        val key = queue.joinToString("|") { it.uri.toString() } + "#$startIndex"
-        val alreadySame = player.currentMediaItem?.mediaId == queue.getOrNull(startIndex)?.uri?.toString() &&
-            player.mediaItemCount == queue.size
+        val key = playQueue.joinToString("|") { it.uri.toString() } + "#$startIndex"
+        val alreadySame = player.currentMediaItem?.mediaId == playQueue.getOrNull(startIndex)?.uri?.toString() &&
+            player.mediaItemCount == playQueue.size
         if (alreadySame && loadedKey == key) return@LaunchedEffect
         loadedKey = key
         externalSubtitleUri = null
+        resumePromptMs = null
+        pendingResumeUri = null
 
-        val items = queue.map { item ->
+        val items = playQueue.map { item ->
             MediaItem.Builder()
                 .setUri(item.uri)
                 .setMediaId(item.uri.toString())
@@ -407,15 +456,31 @@ fun PlayerScreen(
                 )
                 .build()
         }
-        val startUri = queue.getOrNull(startIndex)?.uri?.toString()
+        val startUri = playQueue.getOrNull(startIndex)?.uri?.toString()
         val resumeAt = if (startUri != null) resumeStore.getPosition(startUri) else 0L
-        player.setMediaItems(items, startIndex.coerceAtLeast(0), resumeAt.coerceAtLeast(0L))
-        player.prepare()
-        player.setPlaybackSpeed(speed)
-        player.repeatMode = repeatMode
-        player.shuffleModeEnabled = shuffleOn
-        player.play()
-        queue.getOrNull(startIndex)?.let { recentStore.record(it) }
+        val prompt = resumeAt >= ResumeStore.RESUME_PROMPT_MS
+        ForgeEngine.setPauseAtEndOfMediaItems(!appSettings.autoplayNext)
+        if (prompt) {
+            player.setMediaItems(items, startIndex.coerceAtLeast(0), 0L)
+            player.prepare()
+            player.setPlaybackSpeed(speed)
+            player.repeatMode = repeatMode
+            player.shuffleModeEnabled = shuffleOn
+            player.pause()
+            pendingResumeUri = startUri
+            resumePromptMs = resumeAt
+        } else {
+            player.setMediaItems(items, startIndex.coerceAtLeast(0), resumeAt.coerceAtLeast(0L))
+            player.prepare()
+            player.setPlaybackSpeed(speed)
+            player.repeatMode = repeatMode
+            player.shuffleModeEnabled = shuffleOn
+            player.play()
+        }
+        playQueue.getOrNull(startIndex)?.let { recentStore.record(it) }
+        if (startUri != null) {
+            brightnessStore.get(startUri)?.let { setWindowBrightness(activity, it) }
+        }
     }
 
     LaunchedEffect(hasVideo, current?.kind, inPip, orientationLock) {
@@ -512,19 +577,26 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(subtitleSizeSp, playerViewRef, subtitlesEnabled) {
+    LaunchedEffect(subtitleSizeSp, subtitleColor, subtitleBackground, subtitlePosition, playerViewRef, subtitlesEnabled) {
         playerViewRef?.subtitleView?.apply {
             setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
+            val bg = when (subtitleBackground) {
+                SubtitleBackground.NONE -> android.graphics.Color.TRANSPARENT
+                SubtitleBackground.SEMI -> android.graphics.Color.argb(140, 0, 0, 0)
+                SubtitleBackground.BLACK -> android.graphics.Color.BLACK
+            }
             setStyle(
                 CaptionStyleCompat(
-                    android.graphics.Color.WHITE,
-                    android.graphics.Color.TRANSPARENT,
+                    subtitleColor.argb,
+                    bg,
                     android.graphics.Color.TRANSPARENT,
                     CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                     android.graphics.Color.BLACK,
                     null,
                 ),
             )
+            val frac = subtitlePosition.bottomFraction
+            setBottomPaddingFraction(frac)
         }
     }
 
@@ -583,12 +655,14 @@ fun PlayerScreen(
                     PlayerGestureLayer(
                         durationMs = durationMs,
                         positionMs = positionMs,
+                        seekSeconds = appSettings.seekSeconds,
                         onSeek = { target ->
                             controller.seekTo(target)
                             positionMs = target
                         },
                         onDoubleTapSeek = { back ->
-                            val delta = if (back) -10_000L else 10_000L
+                            val deltaMs = appSettings.seekSeconds * 1000L
+                            val delta = if (back) -deltaMs else deltaMs
                             val dur = controller.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
                             val target = (controller.currentPosition + delta).coerceIn(0L, dur)
                             controller.seekTo(target)
@@ -596,7 +670,27 @@ fun PlayerScreen(
                             controlsVisible = true
                         },
                         onVolumeFraction = { setMusicVolume(context, it) },
-                        onBrightnessFraction = { setWindowBrightness(activity, it) },
+                        onBrightnessFraction = { frac ->
+                            setWindowBrightness(activity, frac)
+                            val uri = current?.uri?.toString()
+                            if (uri != null) {
+                                scope.launch { brightnessStore.save(uri, frac) }
+                            }
+                        },
+                        onHoldSpeedStart = {
+                            if (holdBoosting) return@PlayerGestureLayer
+                            savedSpeed = speed
+                            holdBoosting = true
+                            val boost = if (savedSpeed < 1.5f) 2.0f else maxOf(savedSpeed, 2.0f)
+                            speed = boost
+                            controller.setPlaybackSpeed(boost)
+                        },
+                        onHoldSpeedEnd = {
+                            if (!holdBoosting) return@PlayerGestureLayer
+                            holdBoosting = false
+                            speed = savedSpeed
+                            controller.setPlaybackSpeed(savedSpeed)
+                        },
                         onTap = {
                             if (controlsLocked) return@PlayerGestureLayer
                             controlsVisible = !controlsVisible
@@ -608,12 +702,18 @@ fun PlayerScreen(
                     )
                 }
 
-                // Custom subtitle overlay (supports delay)
+                // Custom subtitle overlay (supports delay + style)
                 if (subtitlesEnabled && displayedCues.isNotEmpty() && subtitleDelayMs != 0) {
+                    val bottomPad = (subtitlePosition.bottomFraction * 400f).dp + if (showChrome) 72.dp else 0.dp
+                    val bg = when (subtitleBackground) {
+                        SubtitleBackground.NONE -> Color.Transparent
+                        SubtitleBackground.SEMI -> Color.Black.copy(alpha = 0.55f)
+                        SubtitleBackground.BLACK -> Color.Black
+                    }
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = if (showChrome) 120.dp else 48.dp)
+                            .padding(bottom = bottomPad)
                             .padding(horizontal = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -621,11 +721,11 @@ fun PlayerScreen(
                             val cueText = cue.text?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
                             Text(
                                 text = cueText,
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color(subtitleColor.argb),
+                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = subtitleSizeSp.sp),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(Color.Black.copy(alpha = 0.55f))
+                                    .background(bg)
                                     .padding(horizontal = 10.dp, vertical = 4.dp),
                             )
                         }
@@ -751,6 +851,14 @@ fun PlayerScreen(
                         snapshotMessage = result.message
                     }
                 },
+                onShare = {
+                    moreMenu = false
+                    shareCurrentMedia(context, current)
+                },
+                onQueue = {
+                    moreMenu = false
+                    panel = Panel.Queue
+                },
                 showAspect = isVideoSurface,
                 showSnapshot = isVideoSurface,
             )
@@ -829,7 +937,7 @@ fun PlayerScreen(
                 scrubValue = scrubValue,
                 isPlaying = isPlaying,
                 canPrev = index > 0 || shuffleOn || repeatMode != Player.REPEAT_MODE_OFF,
-                canNext = index < queue.lastIndex || shuffleOn || repeatMode != Player.REPEAT_MODE_OFF,
+                canNext = index < playQueue.lastIndex || shuffleOn || repeatMode != Player.REPEAT_MODE_OFF,
                 repeatMode = repeatMode,
                 shuffleOn = shuffleOn,
                 onScrub = {
@@ -959,6 +1067,9 @@ fun PlayerScreen(
                 tracks = textTracks,
                 enabled = subtitlesEnabled,
                 sizeSp = subtitleSizeSp,
+                color = subtitleColor,
+                background = subtitleBackground,
+                position = subtitlePosition,
                 hasExternal = externalSubtitleUri != null,
                 delayMs = subtitleDelayMs,
                 onDismiss = { panel = Panel.None },
@@ -970,7 +1081,22 @@ fun PlayerScreen(
                     subtitlesEnabled = true
                     selectTrack(controller, C.TRACK_TYPE_TEXT, choice)
                 },
-                onSize = { subtitleSizeSp = it },
+                onSize = {
+                    subtitleSizeSp = it
+                    scope.launch { appSettingsStore.setSubtitleSizeSp(it) }
+                },
+                onColor = {
+                    subtitleColor = it
+                    scope.launch { appSettingsStore.setSubtitleColor(it) }
+                },
+                onBackground = {
+                    subtitleBackground = it
+                    scope.launch { appSettingsStore.setSubtitleBackground(it) }
+                },
+                onPosition = {
+                    subtitlePosition = it
+                    scope.launch { appSettingsStore.setSubtitlePosition(it) }
+                },
                 onDelay = { panel = Panel.SubDelay },
                 onPickExternal = {
                     subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream", "*/*"))
@@ -979,7 +1105,7 @@ fun PlayerScreen(
                     externalSubtitleUri = null
                     // Reload current item without subtitles
                     val player = controller ?: return@SubtitleDialog
-                    val item = queue.getOrNull(player.currentMediaItemIndex) ?: return@SubtitleDialog
+                    val item = playQueue.getOrNull(player.currentMediaItemIndex) ?: return@SubtitleDialog
                     val pos = player.currentPosition
                     val ready = player.playWhenReady
                     val media = MediaItem.Builder()
@@ -1111,6 +1237,70 @@ fun PlayerScreen(
                 },
             )
         }
+
+        if (panel == Panel.Queue && showChrome) {
+            QueueDialog(
+                items = playQueue,
+                currentIndex = index,
+                onDismiss = { panel = Panel.None },
+                onPlayIndex = { i ->
+                    controller?.seekToDefaultPosition(i)
+                    index = i
+                    panel = Panel.None
+                },
+                onMove = { from, to ->
+                    if (from !in playQueue.indices || to !in playQueue.indices) return@QueueDialog
+                    val mutable = playQueue.toMutableList()
+                    val item = mutable.removeAt(from)
+                    mutable.add(to, item)
+                    playQueue = mutable
+                    controller?.moveMediaItem(from, to)
+                    index = controller?.currentMediaItemIndex ?: index
+                },
+            )
+        }
+
+        resumePromptMs?.let { saved ->
+            AlertDialog(
+                onDismissRequest = { },
+                containerColor = ForgeGraphite,
+                title = { Text("Resume playback", color = Color.White) },
+                text = {
+                    Text(
+                        "Continue from ${formatDuration(saved)}?",
+                        color = ForgeMuted,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val player = controller
+                            if (player != null) {
+                                player.seekTo(saved)
+                                player.play()
+                            }
+                            resumePromptMs = null
+                            pendingResumeUri = null
+                        },
+                    ) { Text("Continue", color = ForgeAccent) }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            val uri = pendingResumeUri
+                            val player = controller
+                            if (uri != null) {
+                                scope.launch { resumeStore.clear(uri) }
+                            }
+                            player?.seekTo(0L)
+                            player?.play()
+                            resumePromptMs = null
+                            pendingResumeUri = null
+                        },
+                    ) { Text("Start over", color = Color.White) }
+                },
+            )
+        }
     }
 }
 
@@ -1145,6 +1335,8 @@ private fun PlayerTopBar(
     onSubDelay: () -> Unit,
     onAudioDelay: () -> Unit,
     onSnapshot: () -> Unit,
+    onShare: () -> Unit,
+    onQueue: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1309,6 +1501,20 @@ private fun PlayerTopBar(
                     onClick = onAudioDelay,
                     leadingIcon = {
                         Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Queue", color = Color.White) },
+                    onClick = onQueue,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Share", color = Color.White) },
+                    onClick = onShare,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Share, null, tint = ForgeAccent)
                     },
                 )
                 if (showSnapshot) {
@@ -1487,12 +1693,18 @@ private fun SubtitleDialog(
     tracks: List<TrackChoice>,
     enabled: Boolean,
     sizeSp: Float,
+    color: SubtitleColor,
+    background: SubtitleBackground,
+    position: SubtitlePosition,
     hasExternal: Boolean,
     delayMs: Int,
     onDismiss: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onSelectTrack: (TrackChoice) -> Unit,
     onSize: (Float) -> Unit,
+    onColor: (SubtitleColor) -> Unit,
+    onBackground: (SubtitleBackground) -> Unit,
+    onPosition: (SubtitlePosition) -> Unit,
     onDelay: () -> Unit,
     onPickExternal: () -> Unit,
     onClearExternal: () -> Unit,
@@ -1542,12 +1754,60 @@ private fun SubtitleDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("Size", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     SUBTITLE_SIZES.forEach { size ->
                         FilterChip(
                             selected = sizeSp == size,
                             onClick = { onSize(size) },
                             label = { Text("${size.toInt()}") },
+                            colors = chipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Color", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SubtitleColor.entries.forEach { c ->
+                        FilterChip(
+                            selected = color == c,
+                            onClick = { onColor(c) },
+                            label = { Text(c.label) },
+                            colors = chipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Background", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SubtitleBackground.entries.forEach { b ->
+                        FilterChip(
+                            selected = background == b,
+                            onClick = { onBackground(b) },
+                            label = { Text(b.label) },
+                            colors = chipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Position", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SubtitlePosition.entries.forEach { p ->
+                        FilterChip(
+                            selected = position == p,
+                            onClick = { onPosition(p) },
+                            label = { Text(p.label) },
                             colors = chipColors(),
                         )
                     }
@@ -1940,6 +2200,98 @@ private fun applyExternalSubtitle(player: Player, uri: android.net.Uri) {
         .buildUpon()
         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         .build()
+}
+
+
+@Composable
+private fun QueueDialog(
+    items: List<ForgeMediaItem>,
+    currentIndex: Int,
+    onDismiss: () -> Unit,
+    onPlayIndex: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Queue · ${items.size}", color = Color.White) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (items.isEmpty()) {
+                    Text("Queue is empty", color = ForgeMuted)
+                } else {
+                    items.forEachIndexed { i, item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onPlayIndex(i) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = item.title,
+                                    color = if (i == currentIndex) ForgeAccent else Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = formatDuration(item.durationMs),
+                                    color = ForgeMuted,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                            IconButton(
+                                onClick = { onMove(i, i - 1) },
+                                enabled = i > 0,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowUp,
+                                    contentDescription = "Move up",
+                                    tint = if (i > 0) Color.White else ForgeMuted,
+                                )
+                            }
+                            IconButton(
+                                onClick = { onMove(i, i + 1) },
+                                enabled = i < items.lastIndex,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = "Move down",
+                                    tint = if (i < items.lastIndex) Color.White else ForgeMuted,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
+private fun shareCurrentMedia(context: android.content.Context, item: ForgeMediaItem?) {
+    if (item == null) {
+        Toast.makeText(context, "Nothing to share", Toast.LENGTH_SHORT).show()
+        return
+    }
+    val uri = item.uri
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = item.mimeType.takeIf { it.isNotBlank() && '*' !in it }
+            ?: if (item.isVideo) "video/*" else "audio/*"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TITLE, item.title)
+        putExtra(Intent.EXTRA_SUBJECT, item.title)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(intent, "Share via"))
+    } catch (e: Exception) {
+        Toast.makeText(context, e.message ?: "Share failed", Toast.LENGTH_SHORT).show()
+    }
 }
 
 private fun formatSpeed(speed: Float): String {

@@ -4,15 +4,18 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.FavoritesStore
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
+import com.gketch.forge.data.LibrarySort
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.MediaRepository
 import com.gketch.forge.data.M3uPlaylistIo
 import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SavedStream
 import com.gketch.forge.data.SavedStreamsStore
 import kotlinx.coroutines.Job
@@ -41,6 +44,7 @@ data class LibraryUiState(
     val savedStreams: List<SavedStream> = emptyList(),
     val query: String = "",
     val filter: LibraryFilter = LibraryFilter.ALL,
+    val sort: LibrarySort = LibrarySort.NAME,
     val tab: LibraryTab = LibraryTab.LIBRARY,
     val layout: LibraryLayout = LibraryLayout.GRID,
     val loading: Boolean = true,
@@ -50,9 +54,11 @@ data class LibraryUiState(
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = MediaRepository(application)
     private val recentStore = RecentStore(application)
+    private val resumeStore = ResumeStore(application)
     private val favoritesStore = FavoritesStore(application)
     private val playlistStore = PlaylistStore(application)
     private val savedStreamsStore = SavedStreamsStore(application)
+    private val settingsStore = AppSettingsStore(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
@@ -89,6 +95,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _state.update { it.copy(savedStreams = list) }
             }
         }
+        viewModelScope.launch {
+            settingsStore.settings.collect { prefs ->
+                _state.update {
+                    it.copy(
+                        sort = prefs.librarySort,
+                        filtered = applyFilterAndSort(it.items, it.filter, prefs.librarySort),
+                    )
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -104,7 +120,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     }.orEmpty()
                     it.copy(
                         items = items,
-                        filtered = applyFilter(items, it.filter),
+                        filtered = applyFilterAndSort(items, it.filter, it.sort),
                         folders = folders,
                         folderItems = folderItems,
                         loading = false,
@@ -129,7 +145,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setFilter(filter: LibraryFilter) {
         _state.update {
-            it.copy(filter = filter, filtered = applyFilter(it.items, filter))
+            it.copy(filter = filter, filtered = applyFilterAndSort(it.items, filter, it.sort))
+        }
+    }
+
+    fun setSort(sort: LibrarySort) {
+        viewModelScope.launch { settingsStore.setLibrarySort(sort) }
+        _state.update {
+            it.copy(sort = sort, filtered = applyFilterAndSort(it.items, it.filter, sort))
         }
     }
 
@@ -201,6 +224,17 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { playlistStore.removeItem(playlistId, uri) }
     }
 
+    fun movePlaylistItem(playlistId: String, fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch { playlistStore.moveItem(playlistId, fromIndex, toIndex) }
+    }
+
+    fun clearHistory(alsoResume: Boolean) {
+        viewModelScope.launch {
+            recentStore.clear()
+            if (alsoResume) resumeStore.clearAll()
+        }
+    }
+
     fun importM3u(uri: Uri, onDone: (String) -> Unit = {}) {
         viewModelScope.launch {
             try {
@@ -247,7 +281,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-
     fun saveStream(url: String, name: String?) {
         viewModelScope.launch { savedStreamsStore.save(url, name) }
     }
@@ -260,11 +293,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { savedStreamsStore.remove(id) }
     }
 
-    private fun applyFilter(items: List<ForgeMediaItem>, filter: LibraryFilter): List<ForgeMediaItem> {
-        return when (filter) {
+    private fun applyFilterAndSort(
+        items: List<ForgeMediaItem>,
+        filter: LibraryFilter,
+        sort: LibrarySort,
+    ): List<ForgeMediaItem> {
+        val filtered = when (filter) {
             LibraryFilter.ALL -> items
             LibraryFilter.VIDEO -> items.filter { it.kind == MediaKind.VIDEO }
             LibraryFilter.AUDIO -> items.filter { it.kind == MediaKind.AUDIO }
+        }
+        return when (sort) {
+            LibrarySort.NAME -> filtered.sortedBy { it.title.lowercase() }
+            LibrarySort.DATE -> filtered.sortedByDescending { it.dateAdded }
+            LibrarySort.SIZE -> filtered.sortedByDescending { it.sizeBytes }
+            LibrarySort.DURATION -> filtered.sortedByDescending { it.durationMs }
         }
     }
 }

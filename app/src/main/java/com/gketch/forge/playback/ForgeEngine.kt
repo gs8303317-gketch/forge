@@ -42,6 +42,10 @@ object ForgeEngine {
         )
     }
 
+    fun setPauseAtEndOfMediaItems(pause: Boolean) {
+        playerRef.get()?.pauseAtEndOfMediaItems = pause
+    }
+
     private fun applyLive(player: ExoPlayer) {
         val prefs = ForgePlayerPrefs.snapshot
         player.skipSilenceEnabled = prefs.skipSilence

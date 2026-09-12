@@ -1,7 +1,6 @@
 package com.gketch.forge.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +39,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.gketch.forge.BuildConfig
+import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.AppSettingsStore
+import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.playback.BufferPreset
 import com.gketch.forge.playback.DecoderPreference
 import com.gketch.forge.playback.EnginePrefs
@@ -54,10 +59,18 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { ForgePlayerPrefsStore(context) }
+    val appStore = remember { AppSettingsStore(context) }
+    val recentStore = remember { RecentStore(context) }
+    val resumeStore = remember { ResumeStore(context) }
     var prefs by remember { mutableStateOf(EnginePrefs()) }
+    var app by remember { mutableStateOf(AppSettings()) }
+    var clearDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         store.prefs.collect { prefs = it }
+    }
+    LaunchedEffect(Unit) {
+        appStore.settings.collect { app = it }
     }
 
     Column(
@@ -87,6 +100,31 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            SettingsCard(title = "Playback") {
+                Text("Double-tap seek", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppSettingsStore.SEEK_OPTIONS.forEach { sec ->
+                        FilterChip(
+                            selected = app.seekSeconds == sec,
+                            onClick = { scope.launch { appStore.setSeekSeconds(sec) } },
+                            label = { Text("±${sec}s") },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = "Autoplay next",
+                    subtitle = "Continue to the next item in queue or folder",
+                    checked = app.autoplayNext,
+                    onChecked = { scope.launch { appStore.setAutoplayNext(it) } },
+                )
+            }
+
             SettingsCard(title = "Playback engine") {
                 Text("Decoder", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -158,6 +196,18 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            SettingsCard(title = "History") {
+                Text(
+                    "Clear recently played items. Optionally also wipe saved resume positions.",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(10.dp))
+                TextButton(onClick = { clearDialog = true }) {
+                    Text("Clear history…", color = ForgeAccent)
+                }
+            }
+
             SettingsCard(title = "About") {
                 Text(
                     text = "Forge",
@@ -183,7 +233,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Audio delay · decoder prefs · buffers · precise seek · skip silence · M3U · stream quality · media info · bookmarks · EQ · A-B · PiP",
+                    text = "Resume dialog · hold 2× · sort/filter · subtitle style · queue reorder · share · seek amount · per-video brightness · clear history · autoplay",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
@@ -195,6 +245,46 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
         }
+    }
+
+    if (clearDialog) {
+        AlertDialog(
+            onDismissRequest = { clearDialog = false },
+            containerColor = ForgeGraphite,
+            title = { Text("Clear history", color = Color.White) },
+            text = {
+                Text(
+                    "Remove recently played entries from the library home section.",
+                    color = ForgeMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            recentStore.clear()
+                            clearDialog = false
+                        }
+                    },
+                ) { Text("Clear recent", color = ForgeAccent) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                recentStore.clear()
+                                resumeStore.clearAll()
+                                clearDialog = false
+                            }
+                        },
+                    ) { Text("Recent + resume", color = Color.White) }
+                    TextButton(onClick = { clearDialog = false }) {
+                        Text("Cancel", color = ForgeMuted)
+                    }
+                }
+            },
+        )
     }
 }
 

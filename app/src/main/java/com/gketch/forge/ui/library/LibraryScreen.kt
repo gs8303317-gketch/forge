@@ -44,6 +44,9 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -94,6 +97,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
+import com.gketch.forge.data.LibrarySort
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.SavedStream
@@ -120,6 +124,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCreatePlaylist by remember { mutableStateOf(false) }
+    var showClearHistory by remember { mutableStateOf(false) }
     var renamePlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
     var renameStream by remember { mutableStateOf<SavedStream?>(null) }
     var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
@@ -308,6 +313,29 @@ fun LibraryScreen(
                         colors = filterColors(),
                     )
                 }
+                if (state.tab == LibraryTab.LIBRARY) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Sort, null, tint = ForgeMuted, modifier = Modifier.size(18.dp))
+                        LibrarySort.entries.forEach { sort ->
+                            FilterChip(
+                                selected = state.sort == sort,
+                                onClick = { viewModel.setSort(sort) },
+                                label = { Text(sort.label) },
+                                colors = filterColors(),
+                            )
+                        }
+                        if (state.recent.isNotEmpty()) {
+                            TextButton(onClick = { showClearHistory = true }) {
+                                Text("Clear history", color = ForgeAccent)
+                            }
+                        }
+                    }
+                }
                 if (!permitted) {
                     Spacer(Modifier.height(10.dp))
                     TextButton(onClick = onRequestPermission) {
@@ -344,6 +372,7 @@ fun LibraryScreen(
                 onRename = { renamePlaylist = it },
                 onDelete = viewModel::deletePlaylist,
                 onRemoveItem = viewModel::removeFromPlaylist,
+                onMoveItem = viewModel::movePlaylistItem,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onImportM3u = {
                     importM3uLauncher.launch(
@@ -389,7 +418,43 @@ fun LibraryScreen(
             },
         )
     }
+    if (showClearHistory) {
+        AlertDialog(
+            onDismissRequest = { showClearHistory = false },
+            containerColor = ForgeGraphite,
+            title = { Text("Clear history", color = Color.White) },
+            text = {
+                Text(
+                    "Remove recently played items. Optionally also clear saved resume positions.",
+                    color = ForgeMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearHistory(alsoResume = false)
+                        showClearHistory = false
+                    },
+                ) { Text("Clear recent", color = ForgeAccent) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            viewModel.clearHistory(alsoResume = true)
+                            showClearHistory = false
+                        },
+                    ) { Text("Recent + resume", color = Color.White) }
+                    TextButton(onClick = { showClearHistory = false }) {
+                        Text("Cancel", color = ForgeMuted)
+                    }
+                }
+            },
+        )
+    }
+
     if (showCreatePlaylist) {
+
         NameDialog(
             title = "New playlist",
             initial = "",
@@ -644,6 +709,7 @@ private fun PlaylistsBody(
     onRename: (ForgePlaylist) -> Unit,
     onDelete: (String) -> Unit,
     onRemoveItem: (String, Uri) -> Unit,
+    onMoveItem: (String, Int, Int) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
     onImportM3u: () -> Unit,
     onExportM3u: (ForgePlaylist) -> Unit,
@@ -721,14 +787,41 @@ private fun PlaylistsBody(
                     item { Text("Playlist is empty. Star or add items from the library.", color = ForgeMuted) }
                 }
                 itemsIndexed(selected.items, key = { _, item -> item.stableKey() }) { index, item ->
-                    MediaRow(
-                        item = item,
-                        favorite = state.favoriteUris.contains(item.uri.toString()),
-                        onClick = { onPlay(selected.items, index) },
-                        onToggleFavorite = { onToggleFavorite(item) },
-                        onAddToPlaylist = {},
-                        onRemove = { onRemoveItem(selected.id, item.uri) },
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            MediaRow(
+                                item = item,
+                                favorite = state.favoriteUris.contains(item.uri.toString()),
+                                onClick = { onPlay(selected.items, index) },
+                                onToggleFavorite = { onToggleFavorite(item) },
+                                onAddToPlaylist = {},
+                                onRemove = { onRemoveItem(selected.id, item.uri) },
+                            )
+                        }
+                        IconButton(
+                            onClick = { onMoveItem(selected.id, index, index - 1) },
+                            enabled = index > 0,
+                        ) {
+                            Icon(
+                                Icons.Rounded.KeyboardArrowUp,
+                                contentDescription = "Move up",
+                                tint = if (index > 0) Color.White else ForgeMuted,
+                            )
+                        }
+                        IconButton(
+                            onClick = { onMoveItem(selected.id, index, index + 1) },
+                            enabled = index < selected.items.lastIndex,
+                        ) {
+                            Icon(
+                                Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = "Move down",
+                                tint = if (index < selected.items.lastIndex) Color.White else ForgeMuted,
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -22,6 +22,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Player chrome 1.17.0: aspect Fit/Fill/Zoom moved to bottom control row (long-press toast); lock unlock auto-hides with chrome (no permanent floating lock); Settings chrome hide delay 3s/5.5s/8s/Never; leaner top bar (speed in ⋮)
 - Player power 1.18.0: VLC-like stats overlay; mirror/rotate transform; aspect Fit/Fill/Zoom/16:9/4:3/Original; fine speed 0.25–3× (0.05 steps); quick ±100/±500 sub & audio delay; chapter prev/next; queue bottom sheet; buffering HUD + scrubber buffer; ⋮ shortcuts for EQ/sleep/A-B/snapshot/bookmarks; progress state isolated from full-tree ticks
 - Player polish 1.19.0: recently-played tiles no longer stuck red/trash (swipe-in-horizontal-row replaced with long-press remove); left-edge brightness dims video only (overlay, not window); full-screen seek preview on scrub/gesture
+- Hotfix 1.20.1: language switch no longer hangs (DataStore default SYSTEM + Activity recreate latch loop); PIN unlock survives locale recreate
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -92,7 +93,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Stream options: custom User-Agent + network timeout
 - Open shared / VIEW text URLs; clipboard paste helper on stream dialog
 - Random (shuffle) play all items in current folder
-- Hindi UI strings (`values-hi`) + in-app language toggle (System / English / Hindi)
+- Hindi UI strings (`values-hi`) + in-app language toggle (System / English / Hindi; 1.20.1 fixes recreate hang)
 
 - Audio browsers under Audio tab: Songs / Albums / Artists / Genres (MediaStore); drill-in track lists
 - Gapless playback for consecutive audio (Media3 encoder delay/padding)

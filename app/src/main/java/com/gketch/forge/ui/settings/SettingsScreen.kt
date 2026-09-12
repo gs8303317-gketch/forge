@@ -760,7 +760,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.14.1 · startup crash fix · PIN/biometric safety",
+                    text = "1.20.1 · language switch hang fix · PIN session across recreate",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

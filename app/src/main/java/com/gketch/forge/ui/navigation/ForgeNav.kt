@@ -67,7 +67,7 @@ fun ForgeNav(
     val pinStore = remember { PinLockStore(context) }
     val pinState by pinStore.state.collectAsState(initial = PinLockState())
     var pinHydrated by remember { mutableStateOf(false) }
-    var sessionUnlocked by remember { mutableStateOf(false) }
+    var sessionUnlocked by remember { mutableStateOf(PinLockStore.sessionUnlocked) }
     var pendingSettings by remember { mutableStateOf(false) }
     var pendingPlaylists by remember { mutableStateOf(false) }
     var openPlaylistsTick by remember { mutableStateOf(0) }
@@ -125,7 +125,10 @@ fun ForgeNav(
         PinLockGate(
             store = pinStore,
             biometricEnabled = pinState.biometricEnabled,
-            onUnlocked = { sessionUnlocked = true },
+            onUnlocked = {
+                sessionUnlocked = true
+                PinLockStore.sessionUnlocked = true
+            },
         )
         return
     }
@@ -142,6 +145,7 @@ fun ForgeNav(
                 pendingSettings = false
                 pendingPlaylists = false
                 sessionUnlocked = true
+                PinLockStore.sessionUnlocked = true
                 if (wantSettings) {
                     navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
                 }

@@ -68,9 +68,18 @@ class PinLockStore(context: Context) {
             it.remove(KEY_SALT)
             it[KEY_BIOMETRIC] = false
         }
+        sessionUnlocked = false
     }
 
     companion object {
+        /**
+         * In-process unlock latch. Survives Activity recreate (e.g. language switch)
+         * so Settings locale change does not feel like a process kill / re-lock.
+         * Cleared when the process dies or PIN is disabled.
+         */
+        @Volatile
+        var sessionUnlocked: Boolean = false
+
         private val KEY_ENABLED = booleanPreferencesKey("pin_enabled")
         private val KEY_BIOMETRIC = booleanPreferencesKey("pin_biometric")
         private val KEY_HASH = stringPreferencesKey("pin_hash")

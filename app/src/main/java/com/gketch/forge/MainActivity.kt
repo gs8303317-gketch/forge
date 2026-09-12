@@ -13,8 +13,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +27,7 @@ import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.isPlayableStreamUrl
 import com.gketch.forge.playback.ForgeStreamOptions
 import com.gketch.forge.ui.navigation.ForgeNav
+import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeTheme
 import java.util.regex.Pattern
 
@@ -37,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     var pipAllowed: Boolean = false
         private set
     private var pipAspect: Rational = Rational(16, 9)
-    private var appliedLanguage: AppLanguage? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // AppCompatActivity requires Theme.AppCompat (1.14.0 used platform Material → crash).
@@ -46,20 +47,32 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
         consumeIntent(intent)
         setContent {
-            val appStore = remember { AppSettingsStore(this) }
-            val appSettings by appStore.settings.collectAsState(initial = AppSettings())
-            LaunchedEffect(appSettings.streamUserAgent, appSettings.streamTimeoutSec) {
-                ForgeStreamOptions.update(appSettings.streamUserAgent, appSettings.streamTimeoutSec)
-            }
-            LaunchedEffect(appSettings.appLanguage) {
-                if (appliedLanguage != appSettings.appLanguage) {
-                    appliedLanguage = appSettings.appLanguage
-                    applyAppLanguage(appSettings.appLanguage)
+            val appStore = remember { AppSettingsStore(this@MainActivity) }
+            // null until DataStore emits — never apply AppSettings() defaults (SYSTEM),
+            // which previously fought the persisted language after Activity recreate
+            // and caused an infinite setApplicationLocales → recreate loop (hang).
+            var appSettings by remember { mutableStateOf<AppSettings?>(null) }
+            LaunchedEffect(appStore) {
+                appStore.settings.collect { settings ->
+                    applyAppLanguage(settings.appLanguage)
+                    appSettings = settings
                 }
             }
+            val settings = appSettings
+            if (settings == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(ForgeBlack),
+                )
+                return@setContent
+            }
+            LaunchedEffect(settings.streamUserAgent, settings.streamTimeoutSec) {
+                ForgeStreamOptions.update(settings.streamUserAgent, settings.streamTimeoutSec)
+            }
             ForgeTheme(
-                accentPreset = appSettings.accentPreset,
-                dynamicColor = appSettings.dynamicColor,
+                accentPreset = settings.accentPreset,
+                dynamicColor = settings.dynamicColor,
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ForgeNav(
@@ -124,6 +137,10 @@ class MainActivity : AppCompatActivity() {
             AppLanguage.ENGLISH -> LocaleListCompat.forLanguageTags("en")
             AppLanguage.HINDI -> LocaleListCompat.forLanguageTags("hi")
         }
+        // Latch on AppCompat's live locales (survives Activity recreate). Calling
+        // setApplicationLocales when already applied recreates again → hang loop.
+        val current = AppCompatDelegate.getApplicationLocales()
+        if (locales.toLanguageTags() == current.toLanguageTags()) return
         AppCompatDelegate.setApplicationLocales(locales)
     }
 

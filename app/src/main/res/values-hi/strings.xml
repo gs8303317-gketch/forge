@@ -120,6 +120,10 @@
     <string name="unlock_controls">अनलॉक</string>
     <string name="stats_show">आँकड़े ओवरले</string>
     <string name="stats_hide">आँकड़े छिपाएँ</string>
+    <string name="night_filter">नाइट फ़िल्टर</string>
+    <string name="reset_zoom">ज़ूम रीसेट</string>
+    <string name="series_auto_next">सीरीज़ ऑटो-नेक्स्ट</string>
+    <string name="next_episode">अगला एपिसोड</string>
     <string name="transform">ट्रांसफ़ॉर्म</string>
     <string name="queue">कतार</string>
     <string name="equalizer">इक्वलाइज़र</string>

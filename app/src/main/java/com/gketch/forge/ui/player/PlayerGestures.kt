@@ -39,7 +39,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.util.fastForEach
+import kotlin.math.sqrt
 import androidx.compose.ui.unit.dp
+import com.gketch.forge.data.BrightnessStore
 import com.gketch.forge.ui.library.formatDuration
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeGraphite
@@ -52,6 +55,8 @@ private enum class GestureKind { Seek, Volume, Brightness }
 
 private const val EDGE_FRACTION = 0.20f
 private const val DOUBLE_TAP_THIRD = 1f / 3f
+/** Gesture brightness spans 0..2 (0%..200%); full-height swipe covers the range. */
+private const val BRIGHTNESS_SPAN = BrightnessStore.MAX
 
 @Composable
 fun PlayerGestureLayer(
@@ -68,6 +73,10 @@ fun PlayerGestureLayer(
     onTap: () -> Unit,
     currentVolume: () -> Float,
     currentBrightness: () -> Float,
+    /** Pinch zoom scale change (multiplicative) + pan delta. */
+    onTransformZoomPan: ((zoomChange: Float, pan: Offset) -> Unit)? = null,
+    onZoomReset: (() -> Unit)? = null,
+    currentZoom: () -> Float = { 1f },
     gesturesEnabled: Boolean = true,
     controlsVisible: Boolean = false,
     excludeTopPx: Float = 0f,
@@ -79,6 +88,7 @@ fun PlayerGestureLayer(
     val positionState = rememberUpdatedState(positionMs)
     val volumeState = rememberUpdatedState(currentVolume)
     val brightnessState = rememberUpdatedState(currentBrightness)
+    val zoomState = rememberUpdatedState(currentZoom)
     val seekState = rememberUpdatedState(onSeek)
     val previewState = rememberUpdatedState(onSeekPreview)
     val doubleTapState = rememberUpdatedState(onDoubleTapSeek)
@@ -91,6 +101,8 @@ fun PlayerGestureLayer(
     val controlsState = rememberUpdatedState(controlsVisible)
     val topExclude = rememberUpdatedState(excludeTopPx)
     val bottomExclude = rememberUpdatedState(excludeBottomPx)
+    val zoomPanCb = rememberUpdatedState(onTransformZoomPan)
+    val zoomResetCb = rememberUpdatedState(onZoomReset)
 
     var kind by remember { mutableStateOf<GestureKind?>(null) }
     var previewMs by remember { mutableLongStateOf(0L) }
@@ -122,6 +134,11 @@ fun PlayerGestureLayer(
                     onDoubleTap = { offset ->
                         if (!enabledState.value) return@detectTapGestures
                         if (inChrome(offset.y, size.height.toFloat())) return@detectTapGestures
+                        // Zoomed: double-tap resets zoom/pan (any zone).
+                        if (zoomState.value() > 1.01f) {
+                            zoomResetCb.value?.invoke()
+                            return@detectTapGestures
+                        }
                         val third = size.width * DOUBLE_TAP_THIRD
                         when {
                             offset.x < third -> {
@@ -164,12 +181,70 @@ fun PlayerGestureLayer(
                     },
                 )
             }
+            // Pinch-to-zoom (2-finger only) — must not steal 1-finger seek/brightness/volume.
+            .pointerInput(gesturesEnabled) {
+                if (!gesturesEnabled || zoomPanCb.value == null) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var pastSlop = false
+                    var lastCentroid: Offset? = null
+                    var lastSpan = 0f
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val pressed = event.changes.filter { it.pressed }
+                        if (pressed.size < 2) {
+                            // Allow 1-finger pan only while already zoomed.
+                            if (pressed.size == 1 && zoomState.value() > 1.01f && pastSlop) {
+                                val pan = pressed[0].positionChange()
+                                if (pan != Offset.Zero) {
+                                    pressed[0].consume()
+                                    runCatching { zoomPanCb.value?.invoke(1f, pan) }
+                                }
+                            }
+                            if (pressed.isEmpty()) break
+                            lastCentroid = null
+                            lastSpan = 0f
+                            continue
+                        }
+                        if (!enabledState.value) break
+                        val c = Offset(
+                            pressed.map { it.position.x }.average().toFloat(),
+                            pressed.map { it.position.y }.average().toFloat(),
+                        )
+                        var span = 0f
+                        for (p in pressed) {
+                            val dx = p.position.x - c.x
+                            val dy = p.position.y - c.y
+                            span += sqrt(dx * dx + dy * dy)
+                        }
+                        span /= pressed.size
+                        val prevC = lastCentroid
+                        val prevSpan = lastSpan
+                        if (prevC != null && prevSpan > 0.01f) {
+                            val zoomChange = (span / prevSpan).coerceIn(0.5f, 2f)
+                            val pan = c - prevC
+                            if (kotlin.math.abs(zoomChange - 1f) > 0.001f || pan.getDistance() > 0.5f) {
+                                pastSlop = true
+                                pressed.fastForEach { it.consume() }
+                                runCatching { zoomPanCb.value?.invoke(zoomChange, pan) }
+                            }
+                        }
+                        lastCentroid = c
+                        lastSpan = span
+                        if (pressed.isEmpty()) break
+                    }
+                }
+            }
             .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx, sensitivityMultiplier) {
                 if (!gesturesEnabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
                     val start = down.position
                     if (inChrome(start.y, size.height.toFloat())) {
+                        return@awaitEachGesture
+                    }
+                    // When zoomed, leave 1-finger drag to transform pan (above); skip edge/seek.
+                    if (zoomState.value() > 1.01f) {
                         return@awaitEachGesture
                     }
                     var total = Offset.Zero
@@ -195,7 +270,7 @@ fun PlayerGestureLayer(
                                 else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, 1f)
-                            startBrit = brightnessState.value().coerceIn(0f, 1f)
+                            startBrit = brightnessState.value().coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
                             startPos = positionState.value
                             kind = classified
                         }
@@ -219,7 +294,10 @@ fun PlayerGestureLayer(
                             }
                             GestureKind.Brightness -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)
-                                val next = (startBrit - (total.y / size.height) * sens).coerceIn(0f, 1f)
+                                // Full-height swipe covers 0..200% (span = 2.0).
+                                val next = (
+                                    startBrit - (total.y / size.height) * sens * BRIGHTNESS_SPAN
+                                    ).coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
                                 barFraction = next
                                 britCb.value(next)
                             }
@@ -238,12 +316,14 @@ fun PlayerGestureLayer(
             GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs)
             GestureKind.Volume -> SideHud(
                 icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
-                fraction = barFraction,
+                displayPercent = (barFraction * 100).toInt(),
+                barFill = barFraction.coerceIn(0f, 1f),
                 alignment = Alignment.CenterEnd,
             )
             GestureKind.Brightness -> SideHud(
                 icon = { Icon(Icons.Rounded.BrightnessHigh, null, tint = Color.White) },
-                fraction = barFraction,
+                displayPercent = (barFraction * 100).toInt().coerceIn(1, 200),
+                barFill = (barFraction / BRIGHTNESS_SPAN).coerceIn(0f, 1f),
                 alignment = Alignment.CenterStart,
             )
             null -> Unit
@@ -347,7 +427,8 @@ private fun SeekHud(previewMs: Long, fromMs: Long) {
 @Composable
 private fun SideHud(
     icon: @Composable () -> Unit,
-    fraction: Float,
+    displayPercent: Int,
+    barFill: Float,
     alignment: Alignment,
 ) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = alignment) {
@@ -371,13 +452,13 @@ private fun SideHud(
                 Box(
                     modifier = Modifier
                         .width(6.dp)
-                        .fillMaxHeight(fraction.coerceIn(0f, 1f))
+                        .fillMaxHeight(barFill.coerceIn(0f, 1f))
                         .background(ForgeAccent),
                 )
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "${(fraction * 100).toInt()}%",
+                text = "$displayPercent%",
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White,
             )

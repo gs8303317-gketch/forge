@@ -56,6 +56,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
@@ -108,6 +109,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -174,6 +176,8 @@ import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.playback.ForgeAudioFx
 import com.gketch.forge.playback.ForgeBalance
 import com.gketch.forge.playback.ForgeVideoColor
+import com.gketch.forge.playback.SeriesEpisode
+import com.gketch.forge.data.MediaRepository
 import com.gketch.forge.playback.ForgeEqualizer
 import androidx.media3.extractor.metadata.id3.ChapterFrame
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
@@ -204,7 +208,7 @@ private enum class AspectMode(
     ORIGINAL("Original", AspectRatioFrameLayout.RESIZE_MODE_FIT),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance, Lyrics, Transform, QuickSubDelay, QuickAudioDelay }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance, Lyrics, Transform, QuickSubDelay, QuickAudioDelay, NightFilter }
 
 private data class MediaChapter(val title: String, val startMs: Long)
 
@@ -234,6 +238,7 @@ fun PlayerScreen(
     val resumeStore = remember { ResumeStore(context) }
     val recentStore = remember { RecentStore(context) }
     val brightnessStore = remember { BrightnessStore(context) }
+    val mediaRepository = remember { MediaRepository(context) }
     val watchedStore = remember { WatchedStore(context) }
     val appSettingsStore = remember { AppSettingsStore(context) }
     val controller = rememberPlayerController()
@@ -255,7 +260,12 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
-    var surfaceBrightness by remember { mutableFloatStateOf(1f) }
+    var surfaceBrightness by remember { mutableFloatStateOf(BrightnessStore.DEFAULT) }
+    var videoZoom by remember { mutableFloatStateOf(1f) }
+    var videoPan by remember { mutableStateOf(Offset.Zero) }
+    var nightStrength by remember { mutableFloatStateOf(0f) }
+    var seriesPrompt by remember { mutableStateOf<ForgeMediaItem?>(null) }
+    var seriesHandledUri by remember { mutableStateOf<String?>(null) }
     val scrubHold = remember { ScrubHold() }
     var hasVideo by remember { mutableStateOf(current?.kind == MediaKind.VIDEO) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -376,6 +386,14 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(surfaceBrightness, playerViewRef, nightStrength) {
+        applySurfaceBrightness(surfaceBrightness, playerViewRef)
+        runCatching {
+            ForgeVideoColor.setNightStrength(nightStrength)
+            ForgeVideoColor.applyTo(playerViewRef)
+        }
+    }
+
     LaunchedEffect(playAsAudio, isPlaying) {
         val window = activity?.window ?: return@LaunchedEffect
         if (playAsAudio) {
@@ -488,12 +506,19 @@ fun PlayerScreen(
                     }
                     val uri = mediaItem?.mediaId
                         ?: mediaItem?.localConfiguration?.uri?.toString()
+                    // Reset pinch zoom/pan on item change (session zoom is per-item).
+                    videoZoom = 1f
+                    videoPan = Offset.Zero
+                    seriesHandledUri = null
+                    seriesPrompt = null
                     if (uri != null) {
                         scope.launch {
-                            surfaceBrightness = brightnessStore.get(uri) ?: 1f
+                            surfaceBrightness = brightnessStore.get(uri) ?: BrightnessStore.DEFAULT
+                            applySurfaceBrightness(surfaceBrightness, playerViewRef)
                         }
                     } else {
-                        surfaceBrightness = 1f
+                        surfaceBrightness = BrightnessStore.DEFAULT
+                        applySurfaceBrightness(surfaceBrightness, playerViewRef)
                     }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                         if (uri != null) {
@@ -669,7 +694,7 @@ fun PlayerScreen(
             }
             playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
             if (startUri != null) {
-                runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: 1f }
+                runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: BrightnessStore.DEFAULT }
             }
             return@LaunchedEffect
         }
@@ -748,7 +773,7 @@ fun PlayerScreen(
         }
         playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
         if (startUri2 != null) {
-            runCatching { surfaceBrightness = brightnessStore.get(startUri2) ?: 1f }
+            runCatching { surfaceBrightness = brightnessStore.get(startUri2) ?: BrightnessStore.DEFAULT }
         }
     }
 
@@ -799,6 +824,50 @@ fun PlayerScreen(
                 ) {
                     autoMarkedUri = uri
                     watchedStore.markWatched(uri)
+                }
+                // Series auto-next (crash-isolated): at end, if last/only queue item looks like
+                // an episode, offer or auto-append the next file from the same folder.
+                if (state == Player.STATE_ENDED &&
+                    appSettings.seriesAutoNext &&
+                    uri != null &&
+                    seriesHandledUri != uri
+                ) {
+                    seriesHandledUri = uri
+                    val atQueueEnd = index >= playQueue.lastIndex
+                    val cur = playQueue.getOrNull(index)
+                    if (atQueueEnd && cur != null && SeriesEpisode.looksLikeEpisode(cur.title)) {
+                        scope.launch {
+                            runCatching {
+                                maybeSeriesAutoNext(
+                                    current = cur,
+                                    mediaRepository = mediaRepository,
+                                    playQueueSize = playQueue.size,
+                                    onOffer = { next -> seriesPrompt = next },
+                                    onPlayNext = { next ->
+                                        val mutable = playQueue.toMutableList()
+                                        mutable.add(next)
+                                        playQueue = mutable
+                                        val media = runCatching {
+                                            androidx.media3.common.MediaItem.Builder()
+                                                .setUri(next.uri)
+                                                .setMediaId(next.uri.toString())
+                                                .setMediaMetadata(
+                                                    androidx.media3.common.MediaMetadata.Builder()
+                                                        .setTitle(next.title)
+                                                        .build(),
+                                                )
+                                                .build()
+                                        }.getOrNull()
+                                        if (media != null) {
+                                            player.addMediaItem(media)
+                                            player.seekTo(playQueue.lastIndex, 0L)
+                                            player.play()
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
                 val sleepFading = sleepDeadlineMs > 0L && appSettings.sleepFadeEnabled
                 runCatching { ForgeCrossfade.tick(player, pos, dur, sleepFading) }
@@ -902,7 +971,7 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
         val hideMs = appSettings.chromeHideDelay.delayMs ?: return@LaunchedEffect
-        val overlayOpen = panel != Panel.None || moreMenu || scrubbing || resumePromptMs != null
+        val overlayOpen = panel != Panel.None || moreMenu || scrubbing || resumePromptMs != null || seriesPrompt != null
         if (controlsVisible && isPlaying && !inPip && !overlayOpen) {
             delay(hideMs)
             controlsVisible = false
@@ -1044,16 +1113,20 @@ fun PlayerScreen(
                                 } else {
                                     1f
                                 }
+                                val z = videoZoom.coerceIn(1f, 6f)
                                 rotationZ = rotationDeg.toFloat()
-                                scaleX = (if (mirrorH) -fit else fit)
-                                scaleY = (if (mirrorV) -fit else fit)
+                                scaleX = (if (mirrorH) -fit else fit) * z
+                                scaleY = (if (mirrorV) -fit else fit) * z
+                                translationX = if (z > 1.01f) videoPan.x else 0f
+                                translationY = if (z > 1.01f) videoPan.y else 0f
                             },
                     )
                 } else {
                     AudioArtwork(title = current?.title.orEmpty())
                 }
 
-                // Video-only dim. Must sit on the surface and under chrome/gestures.
+                // Video-only brightness: black overlay dims (0–100%); boost >100% via ColorMatrix.
+                // UI chrome stays undimmed (never window screenBrightness).
                 if (isVideoSurface && surfaceBrightness < 0.999f) {
                     Box(
                         Modifier
@@ -1133,12 +1206,35 @@ fun PlayerScreen(
                         },
                         onVolumeFraction = { setMusicVolume(context, it) },
                         onBrightnessFraction = { frac ->
-                            surfaceBrightness = frac.coerceIn(0.01f, 1f)
+                            surfaceBrightness = frac.coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
+                            applySurfaceBrightness(surfaceBrightness, playerViewRef)
                             val uri = current?.uri?.toString()
                             if (uri != null) {
                                 scope.launch { brightnessStore.save(uri, surfaceBrightness) }
                             }
                         },
+                        onTransformZoomPan = if (isVideoSurface) { { zoomChange, pan ->
+                            runCatching {
+                                val next = (videoZoom * zoomChange).coerceIn(1f, 6f)
+                                videoZoom = next
+                                if (next <= 1.01f) {
+                                    videoPan = Offset.Zero
+                                    videoZoom = 1f
+                                } else {
+                                    // Clamp pan roughly to zoomed overflow.
+                                    val maxPan = 1200f * (next - 1f)
+                                    videoPan = Offset(
+                                        (videoPan.x + pan.x).coerceIn(-maxPan, maxPan),
+                                        (videoPan.y + pan.y).coerceIn(-maxPan, maxPan),
+                                    )
+                                }
+                            }
+                        } } else null,
+                        onZoomReset = {
+                            videoZoom = 1f
+                            videoPan = Offset.Zero
+                        },
+                        currentZoom = { videoZoom },
                         onHoldSpeedStart = {
                             if (holdBoosting) return@PlayerGestureLayer
                             savedSpeed = speed
@@ -1403,6 +1499,11 @@ fun PlayerScreen(
                     moreMenu = false
                     panel = Panel.Transform
                 },
+                onNightFilter = {
+                    moreMenu = false
+                    panel = Panel.NightFilter
+                },
+                nightStrength = nightStrength,
                 onToggleStats = {
                     moreMenu = false
                     statsVisible = !statsVisible
@@ -1512,6 +1613,7 @@ fun PlayerScreen(
                 mirrorH = mirrorH,
                 mirrorV = mirrorV,
                 rotationDeg = rotationDeg,
+                zoomLabel = if (videoZoom > 1.01f) String.format(java.util.Locale.US, "%.1f×", videoZoom) else null,
                 onMirrorH = {
                     mirrorH = !mirrorH
                     ForgeVideoTransform.set(mirrorH, mirrorV, rotationDeg)
@@ -1527,10 +1629,17 @@ fun PlayerScreen(
                     ForgeVideoTransform.set(mirrorH, mirrorV, rotationDeg)
                     controlsHideToken++
                 },
+                onResetZoom = {
+                    videoZoom = 1f
+                    videoPan = Offset.Zero
+                    controlsHideToken++
+                },
                 onReset = {
                     mirrorH = false
                     mirrorV = false
                     rotationDeg = 0
+                    videoZoom = 1f
+                    videoPan = Offset.Zero
                     ForgeVideoTransform.reset()
                     controlsHideToken++
                 },
@@ -1539,6 +1648,31 @@ fun PlayerScreen(
                     .align(Alignment.TopCenter)
                     .padding(top = 64.dp),
             )
+        }
+
+        if (showChrome && panel == Panel.NightFilter) {
+            ChipRow(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp),
+            ) {
+                listOf(0f to "Off", 0.35f to "Low", 0.65f to "Med", 1f to "High").forEach { (v, label) ->
+                    FilterChip(
+                        selected = kotlin.math.abs(nightStrength - v) < 0.05f,
+                        onClick = {
+                            nightStrength = v
+                            runCatching {
+                                ForgeVideoColor.setNightStrength(v)
+                                ForgeVideoColor.applyTo(playerViewRef)
+                            }
+                            panel = Panel.None
+                            controlsHideToken++
+                        },
+                        label = { Text(label) },
+                        colors = chipColors(),
+                    )
+                }
+            }
         }
 
         if (showChrome && panel == Panel.QuickSubDelay) {
@@ -1887,8 +2021,12 @@ fun PlayerScreen(
                     videoBrightness = 0f
                     videoContrast = 1f
                     videoSaturation = 1f
-                    ForgeVideoColor.reset()
-                    ForgeVideoColor.applyTo(playerViewRef)
+                    ForgeVideoColor.set(0f, 1f, 1f)
+                    applySurfaceBrightness(surfaceBrightness, playerViewRef)
+                    runCatching {
+                        ForgeVideoColor.setNightStrength(nightStrength)
+                        ForgeVideoColor.applyTo(playerViewRef)
+                    }
                 },
             )
         }
@@ -2193,6 +2331,53 @@ fun PlayerScreen(
                 },
             )
         }
+
+        seriesPrompt?.let { nextEp ->
+            AlertDialog(
+                onDismissRequest = { seriesPrompt = null },
+                containerColor = ForgeGraphite,
+                title = { Text("Next episode", color = Color.White) },
+                text = {
+                    Text(
+                        "Play ${nextEp.title}?",
+                        color = ForgeMuted,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val next = seriesPrompt
+                            seriesPrompt = null
+                            val player = controller
+                            if (next != null && player != null) {
+                                runCatching {
+                                    val mutable = playQueue.toMutableList()
+                                    mutable.add(next)
+                                    playQueue = mutable
+                                    val media = androidx.media3.common.MediaItem.Builder()
+                                        .setUri(next.uri)
+                                        .setMediaId(next.uri.toString())
+                                        .setMediaMetadata(
+                                            androidx.media3.common.MediaMetadata.Builder()
+                                                .setTitle(next.title)
+                                                .build(),
+                                        )
+                                        .build()
+                                    player.addMediaItem(media)
+                                    player.seekToNextMediaItem()
+                                    player.play()
+                                }
+                            }
+                        },
+                    ) { Text("Play", color = ForgeAccent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { seriesPrompt = null }) {
+                        Text("Dismiss", color = Color.White)
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -2238,6 +2423,8 @@ private fun PlayerTopBar(
     playAsAudio: Boolean,
     showPlayAsAudio: Boolean,
     onTransform: () -> Unit = {},
+    onNightFilter: () -> Unit = {},
+    nightStrength: Float = 0f,
     onToggleStats: () -> Unit = {},
     statsVisible: Boolean = false,
 ) {
@@ -2386,6 +2573,19 @@ private fun PlayerTopBar(
                     onClick = onTransform,
                     leadingIcon = {
                         Icon(Icons.Rounded.ScreenRotation, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (nightStrength > 0.01f) "Night filter · on"
+                            else "Night filter",
+                            color = Color.White,
+                        )
+                    },
+                    onClick = onNightFilter,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.NightsStay, null, tint = ForgeAccent)
                     },
                 )
                 DropdownMenuItem(
@@ -3598,6 +3798,36 @@ private fun setMusicVolume(context: Context, fraction: Float) {
     val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
     val value = (fraction.coerceIn(0f, 1f) * max).toInt().coerceIn(0, max)
     am.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
+}
+
+/**
+ * Video-only brightness: dim via overlay (caller), boost via ColorMatrix surfaceBoost.
+ * 1.0 = native; (1..2] maps to surfaceBoost 0..~0.65.
+ */
+private fun applySurfaceBrightness(fraction: Float, playerView: PlayerView?) {
+    runCatching {
+        val boost = ((fraction - 1f).coerceAtLeast(0f) * 0.65f).coerceIn(0f, 0.65f)
+        ForgeVideoColor.setSurfaceBoost(boost)
+        ForgeVideoColor.applyTo(playerView)
+    }
+}
+
+/**
+ * If [current] looks like an episode, find the next file in the same MediaStore folder.
+ * Auto-plays when queue was a single item; otherwise offers a prompt.
+ */
+private suspend fun maybeSeriesAutoNext(
+    current: ForgeMediaItem,
+    mediaRepository: MediaRepository,
+    playQueueSize: Int,
+    onOffer: (ForgeMediaItem) -> Unit,
+    onPlayNext: (ForgeMediaItem) -> Unit,
+) {
+    if (current.bucketId == 0L) return
+    val folder = mediaRepository.loadFolderItems(current.bucketId)
+    val next = SeriesEpisode.findNext(current, folder) ?: return
+    // Single-item opens: auto-play. Multi-item queues at end: offer so we don't surprise.
+    if (playQueueSize <= 1) onPlayNext(next) else onOffer(next)
 }
 
 /** Undo any leftover 1.18 window dim so chrome stays at system brightness. */

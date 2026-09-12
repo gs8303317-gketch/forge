@@ -229,6 +229,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onChecked = { scope.launch { appStore.setAutoplayNext(it) } },
                 )
                 Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = "Series auto-next",
+                    subtitle = "When filename looks like SxxExx / Episode, play next file in the same folder",
+                    checked = app.seriesAutoNext,
+                    onChecked = { scope.launch { appStore.setSeriesAutoNext(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
                 Text("Resume playback", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -760,7 +767,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.20.1 · language switch hang fix · PIN session across recreate",
+                    text = "1.21.0 · brightness boost · pinch zoom · night filter · series auto-next",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

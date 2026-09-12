@@ -123,6 +123,10 @@
     <string name="unlock_controls">Unlock</string>
     <string name="stats_show">Stats overlay</string>
     <string name="stats_hide">Hide stats</string>
+    <string name="night_filter">Night filter</string>
+    <string name="reset_zoom">Reset zoom</string>
+    <string name="series_auto_next">Series auto-next</string>
+    <string name="next_episode">Next episode</string>
     <string name="transform">Transform</string>
     <string name="queue">Queue</string>
     <string name="equalizer">Equalizer</string>

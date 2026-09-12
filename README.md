@@ -23,6 +23,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Player power 1.18.0: VLC-like stats overlay; mirror/rotate transform; aspect Fit/Fill/Zoom/16:9/4:3/Original; fine speed 0.25–3× (0.05 steps); quick ±100/±500 sub & audio delay; chapter prev/next; queue bottom sheet; buffering HUD + scrubber buffer; ⋮ shortcuts for EQ/sleep/A-B/snapshot/bookmarks; progress state isolated from full-tree ticks
 - Player polish 1.19.0: recently-played tiles no longer stuck red/trash (swipe-in-horizontal-row replaced with long-press remove); left-edge brightness dims video only (overlay, not window); full-screen seek preview on scrub/gesture
 - Hotfix 1.20.1: language switch no longer hangs (DataStore default SYSTEM + Activity recreate latch loop); PIN unlock survives locale recreate
+- Player 1.21.0: brightness 0–200% (dim overlay + ColorMatrix boost, video-only); pinch-to-zoom + pan (double-tap / Transform reset); night/blue-light filter; series auto-next (SxxExx / Episode) from Settings
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -120,4 +121,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.19.0 (21)
+- **version:** 1.21.0 (24)

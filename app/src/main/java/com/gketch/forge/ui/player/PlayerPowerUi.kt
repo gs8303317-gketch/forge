@@ -166,9 +166,11 @@ fun TransformPanel(
     mirrorH: Boolean,
     mirrorV: Boolean,
     rotationDeg: Int,
+    zoomLabel: String? = null,
     onMirrorH: () -> Unit,
     onMirrorV: () -> Unit,
     onRotate: (Int) -> Unit,
+    onResetZoom: () -> Unit = {},
     onReset: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
@@ -185,7 +187,13 @@ fun TransformPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Transform · ${rotationDeg}°", color = Color.White)
+            Text(
+                buildString {
+                    append("Transform · ${rotationDeg}°")
+                    if (zoomLabel != null) append(" · $zoomLabel")
+                },
+                color = Color.White,
+            )
             TextButton(onClick = onDone) { Text("Done", color = ForgeAccent) }
         }
         Row(
@@ -216,6 +224,14 @@ fun TransformPanel(
                 label = { Text("⟳ 90°") },
                 colors = powerChipColors(),
             )
+            if (zoomLabel != null) {
+                FilterChip(
+                    selected = true,
+                    onClick = onResetZoom,
+                    label = { Text("Reset zoom") },
+                    colors = powerChipColors(),
+                )
+            }
             FilterChip(
                 selected = false,
                 onClick = onReset,

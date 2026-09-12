@@ -121,6 +121,7 @@ data class AppSettings(
     val loudnessNormalize: Boolean = false,
     val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_5_5,
     val resumeBehavior: ResumeBehavior = ResumeBehavior.ASK,
+    val seriesAutoNext: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -147,6 +148,7 @@ data class AppSettings(
         .put("loudnessNormalize", loudnessNormalize)
         .put("chromeHideDelay", chromeHideDelay.name)
         .put("resumeBehavior", resumeBehavior.name)
+        .put("seriesAutoNext", seriesAutoNext)
 }
 
 class AppSettingsStore(context: Context) {
@@ -223,6 +225,7 @@ class AppSettingsStore(context: Context) {
             resumeBehavior = runCatching {
                 ResumeBehavior.valueOf(p[KEY_RESUME_BEHAVIOR] ?: ResumeBehavior.ASK.name)
             }.getOrDefault(ResumeBehavior.ASK),
+            seriesAutoNext = p[KEY_SERIES_AUTO_NEXT] ?: false,
         )
     }
 
@@ -335,6 +338,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_RESUME_BEHAVIOR] = value.name }
     }
 
+    suspend fun setSeriesAutoNext(value: Boolean) {
+        store.edit { it[KEY_SERIES_AUTO_NEXT] = value }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -369,6 +376,7 @@ class AppSettingsStore(context: Context) {
                 }
             }
             if (o.has("resumeBehavior")) p[KEY_RESUME_BEHAVIOR] = o.optString("resumeBehavior")
+            if (o.has("seriesAutoNext")) p[KEY_SERIES_AUTO_NEXT] = o.optBoolean("seriesAutoNext", false)
         }
     }
 
@@ -398,6 +406,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_CONTROLS_AUTO_HIDE = booleanPreferencesKey("controls_auto_hide") // legacy migrate
         private val KEY_CHROME_HIDE_DELAY = stringPreferencesKey("chrome_hide_delay")
         private val KEY_RESUME_BEHAVIOR = stringPreferencesKey("resume_behavior")
+        private val KEY_SERIES_AUTO_NEXT = booleanPreferencesKey("series_auto_next")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

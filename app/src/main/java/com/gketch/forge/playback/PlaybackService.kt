@@ -2,58 +2,49 @@ package com.gketch.forge.playback
 
 import android.app.PendingIntent
 import android.content.Intent
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.gketch.forge.MainActivity
 import com.gketch.forge.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 @UnstableApi
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+    private var exoPlayer: ExoPlayer? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
-        val exo = ExoPlayer.Builder(this)
-            .setSeekBackIncrementMs(10_000L)
-            .setSeekForwardIncrementMs(10_000L)
-            .setHandleAudioBecomingNoisy(true)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                /* handleAudioFocus = */ true,
-            )
-            .build()
-            .apply {
-                playWhenReady = true
-                repeatMode = Player.REPEAT_MODE_OFF
-                addAnalyticsListener(object : AnalyticsListener {
-                    override fun onAudioSessionIdChanged(
-                        eventTime: AnalyticsListener.EventTime,
-                        audioSessionId: Int,
-                    ) {
-                        ForgeEqualizer.attach(audioSessionId)
-                        ForgeLoudness.attach(audioSessionId)
-                    }
-                })
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        ForgeEqualizer.attach(audioSessionId)
-                        ForgeLoudness.attach(audioSessionId)
-                    }
-                })
+        // Warm prefs snapshot before building the player (decoder/load-control are create-time).
+        runBlocking {
+            runCatching {
+                ForgePlayerPrefsStore(this@PlaybackService).prefs.first()
             }
-        ForgeEqualizer.attach(exo.audioSessionId)
-        ForgeLoudness.attach(exo.audioSessionId)
+        }
+
+        val exo = ForgePlayerFactory.create(this, ForgePlayerPrefs.snapshot)
+        exoPlayer = exo
+
+        scope.launch {
+            ForgePlayerPrefsStore(this@PlaybackService).prefs.collect { prefs ->
+                // Live-apply knobs that do not require recreating renderers/load control.
+                ForgeEngine.setAudioDelayMs(prefs.audioDelayMs)
+                ForgeEngine.setSkipSilence(prefs.skipSilence)
+                ForgeEngine.setPreciseSeek(prefs.preciseSeek)
+            }
+        }
 
         val sessionActivity = PendingIntent.getActivity(
             this,
@@ -92,13 +83,16 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
         ForgeLoudness.release()
         ForgeEqualizer.release()
+        exoPlayer?.let { ForgeEngine.detach(it) }
         mediaSession?.run {
             player.release()
             release()
         }
         mediaSession = null
+        exoPlayer = null
         super.onDestroy()
     }
 }

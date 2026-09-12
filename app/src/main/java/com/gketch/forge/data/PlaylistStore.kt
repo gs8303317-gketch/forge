@@ -63,6 +63,16 @@ class PlaylistStore(context: Context) {
         }
     }
 
+    suspend fun importParsed(parsed: ParsedM3u): ForgePlaylist {
+        val playlist = ForgePlaylist(
+            id = UUID.randomUUID().toString(),
+            name = parsed.name.trim().ifBlank { "Imported" },
+            items = parsed.items,
+        )
+        mutate { list -> list + playlist }
+        return playlist
+    }
+
     suspend fun removeItem(playlistId: String, uri: android.net.Uri) {
         mutate { list ->
             list.map { pl ->

@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Timer
@@ -120,6 +121,8 @@ import androidx.media3.common.text.CueGroup
 import com.gketch.forge.data.BookmarkStore
 import com.gketch.forge.data.MediaBookmark
 import com.gketch.forge.playback.ForgeLoudness
+import com.gketch.forge.playback.ForgeEngine
+import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
@@ -143,7 +146,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay }
 
 private enum class OrientationLock(val label: String) {
     AUTO("Auto"),
@@ -193,6 +196,7 @@ fun PlayerScreen(
     var externalSubtitleUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var textTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
     var audioTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
+    var videoTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
     var sleepMinutes by remember { mutableStateOf<Int?>(null) }
     var sleepDeadlineMs by remember { mutableLongStateOf(0L) }
     var sleepRemainingSec by remember { mutableIntStateOf(0) }
@@ -209,7 +213,8 @@ fun PlayerScreen(
     var allBookmarks by remember { mutableStateOf<List<MediaBookmark>>(emptyList()) }
     var controlsLocked by remember { mutableStateOf(false) }
     var subtitleDelayMs by remember { mutableIntStateOf(0) }
-    var audioDelayMs by remember { mutableIntStateOf(0) }
+    var audioDelayMs by remember { mutableIntStateOf(ForgeEngine.audioDelayMs) }
+    val enginePrefsStore = remember { ForgePlayerPrefsStore(context) }
     var volumeBoostPercent by remember { mutableIntStateOf(ForgeLoudness.boostPercent) }
     var snapshotMessage by remember { mutableStateOf<String?>(null) }
     var displayedCues by remember { mutableStateOf<List<Cue>>(emptyList()) }
@@ -325,6 +330,7 @@ fun PlayerScreen(
                 override fun onTracksChanged(tracks: Tracks) {
                     textTracks = collectTracks(tracks, C.TRACK_TYPE_TEXT)
                     audioTracks = collectTracks(tracks, C.TRACK_TYPE_AUDIO)
+                    videoTracks = collectTracks(tracks, C.TRACK_TYPE_VIDEO)
                     videoTrackLabels = collectTrackDetailLabels(tracks, C.TRACK_TYPE_VIDEO)
                     val video = tracks.groups.any { group ->
                         group.type == C.TRACK_TYPE_VIDEO && group.isSelected
@@ -689,6 +695,10 @@ fun PlayerScreen(
                 onAudio = {
                     moreMenu = false
                     panel = Panel.Audio
+                },
+                onQuality = {
+                    moreMenu = false
+                    panel = Panel.Quality
                 },
                 onAspect = {
                     moreMenu = false
@@ -1071,10 +1081,34 @@ fun PlayerScreen(
             DelayDialog(
                 title = "Audio delay",
                 delayMs = audioDelayMs,
-                supported = false,
-                note = "Audio delay is not exposed by Media3 MediaController/session player without a custom AudioSink. Skipped gracefully.",
+                supported = true,
+                note = "Shifts video presentation timestamps so audio leads/lags (Media3 video PTS adjustment). Positive = delay audio vs video.",
                 onDismiss = { panel = Panel.None },
-                onChange = { audioDelayMs = it },
+                onChange = { ms ->
+                    audioDelayMs = ms
+                    ForgeEngine.setAudioDelayMs(ms)
+                    scope.launch { enginePrefsStore.setAudioDelayMs(ms) }
+                },
+            )
+        }
+
+        if (panel == Panel.Quality && showChrome) {
+            QualityDialog(
+                tracks = videoTracks,
+                onDismiss = { panel = Panel.None },
+                onAuto = {
+                    val p = controller ?: return@QualityDialog
+                    p.trackSelectionParameters = p.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+                        .build()
+                    panel = Panel.None
+                },
+                onSelect = { choice ->
+                    selectTrack(controller, C.TRACK_TYPE_VIDEO, choice)
+                    panel = Panel.None
+                },
             )
         }
     }
@@ -1099,6 +1133,7 @@ private fun PlayerTopBar(
     onDismissMore: () -> Unit,
     onSubtitles: () -> Unit,
     onAudio: () -> Unit,
+    onQuality: () -> Unit,
     onAspect: () -> Unit,
     onSleep: () -> Unit,
     onEqualizer: () -> Unit,
@@ -1195,6 +1230,13 @@ private fun PlayerTopBar(
                     onClick = onAudio,
                     leadingIcon = {
                         Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Stream quality", color = Color.White) },
+                    onClick = onQuality,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.HighQuality, null, tint = ForgeAccent)
                     },
                 )
                 if (showAspect) {
@@ -1718,6 +1760,54 @@ private fun EqualizerDialog(
     )
 }
 
+
+@Composable
+private fun QualityDialog(
+    tracks: List<TrackChoice>,
+    onDismiss: () -> Unit,
+    onAuto: () -> Unit,
+    onSelect: (TrackChoice) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Stream quality", color = Color.White) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "HLS/DASH variants and multi-track video. Auto lets AdaptiveTrackSelection pick.",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(10.dp))
+                FilterChip(
+                    selected = tracks.none { it.selected } || tracks.count { it.selected } > 1,
+                    onClick = onAuto,
+                    label = { Text("Auto") },
+                    colors = chipColors(),
+                )
+                Spacer(Modifier.height(8.dp))
+                if (tracks.isEmpty()) {
+                    Text("No alternate video tracks for this stream.", color = ForgeMuted)
+                } else {
+                    tracks.forEach { choice ->
+                        FilterChip(
+                            selected = choice.selected,
+                            onClick = { onSelect(choice) },
+                            label = { Text(choice.label) },
+                            colors = chipColors(),
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
 @Composable
 private fun AudioArtwork(title: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1778,9 +1868,19 @@ private fun collectTracks(tracks: Tracks, type: @C.TrackType Int): List<TrackCho
             if (!group.isTrackSupported(i)) continue
             val format = group.getTrackFormat(i)
             val lang = format.language?.takeIf { it.isNotBlank() && it != "und" }
-            val label = format.label?.takeIf { it.isNotBlank() }
-                ?: lang
-                ?: "${if (type == C.TRACK_TYPE_TEXT) "Subtitle" else "Audio"} ${out.size + 1}"
+            val label = when (type) {
+                C.TRACK_TYPE_VIDEO -> {
+                    val parts = mutableListOf<String>()
+                    format.label?.takeIf { it.isNotBlank() }?.let { parts += it }
+                    if (format.height > 0) parts += "${format.height}p"
+                    else if (format.width > 0 && format.height > 0) parts += "${format.width}×${format.height}"
+                    if (format.bitrate > 0) parts += "${format.bitrate / 1000} kbps"
+                    if (format.frameRate > 0) parts += "%.0f fps".format(format.frameRate)
+                    parts.joinToString(" · ").ifBlank { "Video ${out.size + 1}" }
+                }
+                C.TRACK_TYPE_TEXT -> format.label?.takeIf { it.isNotBlank() } ?: lang ?: "Subtitle ${out.size + 1}"
+                else -> format.label?.takeIf { it.isNotBlank() } ?: lang ?: "Audio ${out.size + 1}"
+            }
             out += TrackChoice(
                 groupIndex = groupIndex,
                 trackIndex = i,

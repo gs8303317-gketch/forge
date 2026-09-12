@@ -10,6 +10,7 @@ import com.gketch.forge.data.ForgePlaylist
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.MediaRepository
+import com.gketch.forge.data.M3uPlaylistIo
 import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.SavedStream
@@ -199,6 +200,53 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun removeFromPlaylist(playlistId: String, uri: Uri) {
         viewModelScope.launch { playlistStore.removeItem(playlistId, uri) }
     }
+
+    fun importM3u(uri: Uri, onDone: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val cr = getApplication<Application>().contentResolver
+                val nameHint = uri.lastPathSegment?.substringAfterLast('/')?.substringBeforeLast('.')
+                    ?: "Imported"
+                val parsed = cr.openInputStream(uri)?.use { M3uPlaylistIo.parse(it, nameHint) }
+                    ?: run {
+                        onDone("Could not read file")
+                        return@launch
+                    }
+                if (parsed.items.isEmpty()) {
+                    onDone("No entries found in M3U")
+                    return@launch
+                }
+                val pl = playlistStore.importParsed(parsed)
+                _state.update { it.copy(tab = LibraryTab.PLAYLISTS, selectedPlaylist = pl) }
+                onDone("Imported “${pl.name}” (${pl.items.size} items)")
+            } catch (e: Exception) {
+                onDone(e.message ?: "Import failed")
+            }
+        }
+    }
+
+    fun exportM3u(playlistId: String, uri: Uri, onDone: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val pl = _state.value.playlists.find { it.id == playlistId }
+                    ?: _state.value.selectedPlaylist
+                    ?: run {
+                        onDone("Playlist not found")
+                        return@launch
+                    }
+                val cr = getApplication<Application>().contentResolver
+                cr.openOutputStream(uri)?.use { M3uPlaylistIo.write(it, pl) }
+                    ?: run {
+                        onDone("Could not write file")
+                        return@launch
+                    }
+                onDone("Exported “${pl.name}”")
+            } catch (e: Exception) {
+                onDone(e.message ?: "Export failed")
+            }
+        }
+    }
+
 
     fun saveStream(url: String, name: String?) {
         viewModelScope.launch { savedStreamsStore.save(url, name) }

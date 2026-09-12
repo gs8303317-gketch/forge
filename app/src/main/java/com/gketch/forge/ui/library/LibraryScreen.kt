@@ -1,6 +1,8 @@
 package com.gketch.forge.ui.library
 
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -37,6 +39,8 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
@@ -64,6 +68,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +78,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,6 +106,7 @@ import com.gketch.forge.ui.theme.ForgeGraphite
 import com.gketch.forge.ui.theme.ForgeMuted
 import com.gketch.forge.ui.theme.ForgeSurfaceVariant
 import java.util.Locale
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -115,14 +123,49 @@ fun LibraryScreen(
     var renamePlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
     var renameStream by remember { mutableStateOf<SavedStream?>(null) }
     var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
+    var exportPlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
+    var m3uMessage by remember { mutableStateOf<String?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val permitted = hasMediaPermission(context)
+
+    val importM3uLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+            }
+            viewModel.importM3u(uri) { msg -> m3uMessage = msg }
+        }
+    }
+    val exportM3uLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
+    ) { uri ->
+        val pl = exportPlaylist
+        exportPlaylist = null
+        if (uri != null && pl != null) {
+            viewModel.exportM3u(pl.id, uri) { msg -> m3uMessage = msg }
+        }
+    }
 
     LaunchedEffect(permitted) {
         if (permitted) viewModel.refresh()
     }
 
+    LaunchedEffect(m3uMessage) {
+        val msg = m3uMessage ?: return@LaunchedEffect
+        snackbar.showSnackbar(msg)
+        m3uMessage = null
+    }
+
     Scaffold(
         containerColor = ForgeBlack,
+        snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             when (state.tab) {
                 LibraryTab.PLAYLISTS -> FloatingActionButton(
@@ -178,6 +221,20 @@ fun LibraryScreen(
                                 contentDescription = "Toggle layout",
                                 tint = ForgeMuted,
                             )
+                        }
+                    }
+                    if (state.tab == LibraryTab.PLAYLISTS) {
+                        IconButton(onClick = {
+                            importM3uLauncher.launch(
+                                arrayOf(
+                                    "audio/x-mpegurl",
+                                    "application/vnd.apple.mpegurl",
+                                    "text/plain",
+                                    "*/*",
+                                ),
+                            )
+                        }) {
+                            Icon(Icons.Rounded.FileUpload, contentDescription = "Import M3U", tint = ForgeMuted)
                         }
                     }
                     IconButton(onClick = { showStreamDialog = true }) {
@@ -288,6 +345,21 @@ fun LibraryScreen(
                 onDelete = viewModel::deletePlaylist,
                 onRemoveItem = viewModel::removeFromPlaylist,
                 onToggleFavorite = viewModel::toggleFavorite,
+                onImportM3u = {
+                    importM3uLauncher.launch(
+                        arrayOf(
+                            "audio/x-mpegurl",
+                            "application/vnd.apple.mpegurl",
+                            "text/plain",
+                            "*/*",
+                        ),
+                    )
+                },
+                onExportM3u = { pl ->
+                    exportPlaylist = pl
+                    val safe = pl.name.replace(Regex("[^A-Za-z0-9._-]+"), "_").ifBlank { "playlist" }
+                    exportM3uLauncher.launch("$safe.m3u")
+                },
             )
             LibraryTab.STREAMS -> StreamsBody(
                 state = state,
@@ -573,6 +645,8 @@ private fun PlaylistsBody(
     onDelete: (String) -> Unit,
     onRemoveItem: (String, Uri) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
+    onImportM3u: () -> Unit,
+    onExportM3u: (ForgePlaylist) -> Unit,
 ) {
     val selected = state.selectedPlaylist
     if (selected == null) {
@@ -581,10 +655,22 @@ private fun PlaylistsBody(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = onImportM3u) {
+                        Icon(Icons.Rounded.FileUpload, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Import M3U", color = ForgeAccent)
+                    }
+                }
+            }
             if (state.playlists.isEmpty()) {
                 item {
                     Text(
-                        "No playlists yet. Tap + to create one.",
+                        "No playlists yet. Tap + to create one, or import an M3U file.",
                         color = ForgeMuted,
                         modifier = Modifier.padding(24.dp),
                     )
@@ -597,6 +683,7 @@ private fun PlaylistsBody(
                     onPlay = { if (pl.items.isNotEmpty()) onPlay(pl.items, 0) },
                     onRename = { onRename(pl) },
                     onDelete = { onDelete(pl.id) },
+                    onExport = { onExportM3u(pl) },
                 )
             }
         }
@@ -612,6 +699,12 @@ private fun PlaylistsBody(
                 Column(Modifier.weight(1f)) {
                     Text(selected.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
                     Text("${selected.items.size} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                IconButton(
+                    onClick = { onExportM3u(selected) },
+                    enabled = selected.items.isNotEmpty(),
+                ) {
+                    Icon(Icons.Rounded.FileDownload, contentDescription = "Export M3U", tint = ForgeMuted)
                 }
                 IconButton(
                     onClick = { if (selected.items.isNotEmpty()) onPlay(selected.items, 0) },
@@ -869,6 +962,7 @@ private fun PlaylistRow(
     onPlay: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -903,6 +997,11 @@ private fun PlaylistRow(
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
                 DropdownMenuItem(text = { Text("Rename", color = Color.White) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(
+                    text = { Text("Export M3U", color = Color.White) },
+                    onClick = { menu = false; onExport() },
+                    leadingIcon = { Icon(Icons.Rounded.FileDownload, null, tint = ForgeAccent) },
+                )
                 DropdownMenuItem(
                     text = { Text("Delete", color = Color.White) },
                     onClick = { menu = false; onDelete() },

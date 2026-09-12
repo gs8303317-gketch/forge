@@ -12,6 +12,11 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Bookmarks per media (named or timestamp; jump from list)
 - Media info panel (resolution, duration, size, mime/container, tracks)
 - Subtitle delay (± ms) with cue overlay
+- Audio delay (Media3 video PTS adjustment for real A/V sync)
+- Decoder preference (Auto / Hardware / Software)
+- Configurable network load-control buffers + precise seek + skip silence
+- Stream quality / video track picker (HLS/DASH variants)
+- M3U playlist import / export (local files)
 - Volume boost above 100% (LoudnessEnhancer, capped)
 - Control lock (gestures/controls off; tap zone to unlock)
 - Frame snapshot to Pictures/Forge
@@ -53,4 +58,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.4.0 (5)
+- **version:** 1.5.0 (6)

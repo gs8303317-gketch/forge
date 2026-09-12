@@ -116,6 +116,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.ExperimentalMaterial3Api
+import com.gketch.forge.playback.ForgeVideoTransform
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.content.ContextCompat
 import androidx.core.util.Consumer
@@ -180,17 +183,24 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-private val SPEED_PRESETS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+private val SPEED_PRESETS = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
 private val SLEEP_OPTIONS = listOf(15, 30, 45, 60)
 private val SUBTITLE_SIZES = listOf(16f, 20f, 24f, 28f, 32f)
 
-private enum class AspectMode(val label: String, val resizeMode: Int) {
+private enum class AspectMode(
+    val label: String,
+    val resizeMode: Int,
+    val forcedRatio: Float? = null,
+) {
     FIT("Fit", AspectRatioFrameLayout.RESIZE_MODE_FIT),
     FILL("Fill", AspectRatioFrameLayout.RESIZE_MODE_FILL),
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
+    RATIO_16_9("16:9", AspectRatioFrameLayout.RESIZE_MODE_FIT, 16f / 9f),
+    RATIO_4_3("4:3", AspectRatioFrameLayout.RESIZE_MODE_FIT, 4f / 3f),
+    ORIGINAL("Original", AspectRatioFrameLayout.RESIZE_MODE_FIT),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance, Lyrics }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance, Lyrics, Transform, QuickSubDelay, QuickAudioDelay }
 
 private data class MediaChapter(val title: String, val startMs: Long)
 
@@ -296,6 +306,11 @@ fun PlayerScreen(
     var sleepBaseVolume by remember { mutableFloatStateOf(1f) }
     var playAsAudio by remember { mutableStateOf(false) }
     var frameStepAvailable by remember { mutableStateOf(true) }
+    val progress = remember { PlayerProgressState() }
+    var statsVisible by remember { mutableStateOf(false) }
+    var mirrorH by remember { mutableStateOf(false) }
+    var mirrorV by remember { mutableStateOf(false) }
+    var rotationDeg by remember { mutableIntStateOf(0) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -663,29 +678,78 @@ fun PlayerScreen(
 
     LaunchedEffect(controller, abLoopEnabled, abPointA, abPointB) {
         val player = controller ?: return@LaunchedEffect
+        var tick = 0
         while (isActive) {
             if (!scrubbing) {
-                positionMs = player.currentPosition.coerceAtLeast(0L)
-                durationMs = player.duration.coerceAtLeast(0L).takeIf { it > 0 } ?: 0L
+                val pos = player.currentPosition.coerceAtLeast(0L)
+                val dur = player.duration.coerceAtLeast(0L).takeIf { it > 0 } ?: 0L
+                val buffered = player.bufferedPosition.coerceAtLeast(0L)
+                val state = player.playbackState
+                val isBuf = state == Player.STATE_BUFFERING
+                // Always update isolated progress (controls/scrubber subscribe here).
+                progress.updateProgress(pos, dur, buffered, isBuf, state)
+                // Throttle parent position/duration reads used by dialogs (250ms).
+                tick++
+                if (tick % 3 == 0 || abLoopEnabled) {
+                    positionMs = pos
+                    durationMs = dur
+                }
                 val a = abPointA
                 val b = abPointB
-                if (abLoopEnabled && a != null && b != null && b > a && positionMs >= b) {
+                if (abLoopEnabled && a != null && b != null && b > a && pos >= b) {
                     player.seekTo(a)
                     positionMs = a
+                    progress.updateProgress(a, dur, buffered, isBuf, state)
                 }
                 val uri = player.currentMediaItem?.mediaId
                     ?: player.currentMediaItem?.localConfiguration?.uri?.toString()
-                if (uri != null && durationMs > 0L &&
-                    positionMs >= durationMs - WatchedStore.AUTO_MARK_NEAR_END_MS &&
+                if (uri != null && dur > 0L &&
+                    pos >= dur - WatchedStore.AUTO_MARK_NEAR_END_MS &&
                     autoMarkedUri != uri
                 ) {
                     autoMarkedUri = uri
                     watchedStore.markWatched(uri)
                 }
                 val sleepFading = sleepDeadlineMs > 0L && appSettings.sleepFadeEnabled
-                runCatching { ForgeCrossfade.tick(player, positionMs, durationMs, sleepFading) }
+                runCatching { ForgeCrossfade.tick(player, pos, dur, sleepFading) }
             }
             delay(100)
+        }
+    }
+
+    // Stats overlay ≤4 Hz — isolated from 10 Hz progress ticks.
+    LaunchedEffect(controller, statsVisible) {
+        if (!statsVisible) return@LaunchedEffect
+        val player = controller ?: return@LaunchedEffect
+        while (isActive) {
+            runCatching {
+                val vs = player.videoSize
+                var fps = 0f
+                var bitrate = -1
+                val tracks = player.currentTracks
+                for (g in tracks.groups) {
+                    if (g.type != C.TRACK_TYPE_VIDEO) continue
+                    for (i in 0 until g.length) {
+                        if (!g.isTrackSelected(i)) continue
+                        val f = g.getTrackFormat(i)
+                        if (f.frameRate > 1f && f.frameRate < 240f) fps = f.frameRate
+                        if (f.bitrate > 0) bitrate = f.bitrate / 1000
+                    }
+                }
+                val dur = progress.durationMs
+                val bufferedPct = if (dur > 0L) {
+                    ((progress.bufferedMs * 100L) / dur).toInt().coerceIn(0, 100)
+                } else 0
+                progress.updateStats(
+                    width = vs.width,
+                    height = vs.height,
+                    fps = fps,
+                    bitrateKbps = bitrate,
+                    bufferedPct = bufferedPct,
+                    stateLabel = playbackStateLabel(player.playbackState),
+                )
+            }
+            delay(250)
         }
     }
 
@@ -866,10 +930,11 @@ fun PlayerScreen(
                                     if (subtitleDelayMs != 0) android.view.View.INVISIBLE
                                     else android.view.View.VISIBLE
                                 ForgeVideoColor.applyTo(this)
+                                applyForcedAspect(this, aspect)
                             }
                         },
                         update = {
-                            // Avoid re-binding / recoloring every position tick (100ms recomposition).
+                            // Avoid re-binding / recoloring every position tick.
                             if (it.player !== controller) it.player = controller
                             if (it.resizeMode != aspect.resizeMode) it.resizeMode = aspect.resizeMode
                             playerViewRef = it
@@ -878,12 +943,46 @@ fun PlayerScreen(
                             if (it.subtitleView?.visibility != subVis) {
                                 it.subtitleView?.visibility = subVis
                             }
-                            // Color matrix applied from the color panel / factory only — not every frame.
+                            applyForcedAspect(it, aspect)
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val sideways = rotationDeg % 180 != 0
+                                val fit = if (sideways && size.width > 0f && size.height > 0f) {
+                                    maxOf(size.width / size.height, size.height / size.width)
+                                } else {
+                                    1f
+                                }
+                                rotationZ = rotationDeg.toFloat()
+                                scaleX = (if (mirrorH) -fit else fit)
+                                scaleY = (if (mirrorV) -fit else fit)
+                            },
                     )
                 } else {
                     AudioArtwork(title = current?.title.orEmpty())
+                }
+
+                // Buffering HUD — crash-isolated spinner over the surface.
+                if (progress.buffering && !inPip) {
+                    CircularProgressIndicator(
+                        color = ForgeAccent,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(48.dp),
+                    )
+                }
+
+                if (statsVisible && !inPip) {
+                    StatsOverlay(
+                        progress = progress,
+                        speed = speed,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .statusBarsPadding()
+                            .padding(start = 12.dp, top = 56.dp),
+                    )
                 }
 
                 val density = LocalDensity.current
@@ -1176,12 +1275,21 @@ fun PlayerScreen(
                 },
                 onSubDelay = {
                     moreMenu = false
-                    panel = Panel.SubDelay
+                    panel = Panel.QuickSubDelay
                 },
                 onAudioDelay = {
                     moreMenu = false
-                    panel = Panel.AudioDelay
+                    panel = Panel.QuickAudioDelay
                 },
+                onTransform = {
+                    moreMenu = false
+                    panel = Panel.Transform
+                },
+                onToggleStats = {
+                    moreMenu = false
+                    statsVisible = !statsVisible
+                },
+
                 onSnapshot = {
                     moreMenu = false
                     scope.launch {
@@ -1242,6 +1350,7 @@ fun PlayerScreen(
                 showPlayAsAudio = current?.kind == MediaKind.VIDEO || hasVideo,
                 showSnapshot = isVideoSurface,
                 showChapters = chapters.isNotEmpty(),
+                statsVisible = statsVisible,
             )
         }
 
@@ -1266,13 +1375,83 @@ fun PlayerScreen(
         }
 
         if (showChrome && panel == Panel.Speed) {
-            SpeedRow(
+            SpeedFinePanel(
                 selected = speed,
-                onSelect = { next ->
-                    speed = next
-                    controller?.setPlaybackSpeed(next)
-                    panel = Panel.None
+                onChange = { next ->
+                    speed = next.coerceIn(0.25f, 3f)
+                    controller?.setPlaybackSpeed(speed)
+                    controlsHideToken++
                 },
+                onDone = { panel = Panel.None },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp),
+            )
+        }
+
+        if (showChrome && panel == Panel.Transform) {
+            TransformPanel(
+                mirrorH = mirrorH,
+                mirrorV = mirrorV,
+                rotationDeg = rotationDeg,
+                onMirrorH = {
+                    mirrorH = !mirrorH
+                    ForgeVideoTransform.set(mirrorH, mirrorV, rotationDeg)
+                    controlsHideToken++
+                },
+                onMirrorV = {
+                    mirrorV = !mirrorV
+                    ForgeVideoTransform.set(mirrorH, mirrorV, rotationDeg)
+                    controlsHideToken++
+                },
+                onRotate = { delta ->
+                    rotationDeg = ((rotationDeg + delta) % 360 + 360) % 360
+                    ForgeVideoTransform.set(mirrorH, mirrorV, rotationDeg)
+                    controlsHideToken++
+                },
+                onReset = {
+                    mirrorH = false
+                    mirrorV = false
+                    rotationDeg = 0
+                    ForgeVideoTransform.reset()
+                    controlsHideToken++
+                },
+                onDone = { panel = Panel.None },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp),
+            )
+        }
+
+        if (showChrome && panel == Panel.QuickSubDelay) {
+            QuickDelayBar(
+                title = "Sub",
+                delayMs = subtitleDelayMs,
+                onAdjust = { delta ->
+                    subtitleDelayMs = (subtitleDelayMs + delta).coerceIn(-5000, 5000)
+                    controlsHideToken++
+                },
+                onOpenFull = { panel = Panel.SubDelay },
+                onDone = { panel = Panel.None },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp),
+            )
+        }
+
+        if (showChrome && panel == Panel.QuickAudioDelay) {
+            QuickDelayBar(
+                title = "Audio",
+                delayMs = audioDelayMs,
+                onAdjust = { delta ->
+                    val ms = (audioDelayMs + delta).coerceIn(ForgeEngine.MIN_DELAY_MS, ForgeEngine.MAX_DELAY_MS)
+                    audioDelayMs = ms
+                    ForgeEngine.setAudioDelayMs(ms)
+                    scope.launch { enginePrefsStore.setAudioDelayMs(ms) }
+                    controlsHideToken++
+                },
+                onOpenFull = { panel = Panel.AudioDelay },
+                onDone = { panel = Panel.None },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 64.dp),
@@ -1351,8 +1530,7 @@ fun PlayerScreen(
 
         AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.BottomCenter).zIndex(4f)) {
             PlayerControls(
-                positionMs = positionMs,
-                durationMs = durationMs,
+                progress = progress,
                 scrubbing = scrubbing,
                 scrubValue = scrubValue,
                 isPlaying = isPlaying,
@@ -1363,16 +1541,39 @@ fun PlayerScreen(
                 showFrameStep = !isPlaying && isVideoSurface && frameStepAvailable,
                 showAspect = isVideoSurface,
                 aspectLabel = aspect.label,
+                showChapters = chapters.isNotEmpty(),
                 onInteract = { controlsHideToken++ },
                 onCycleAspect = {
                     val modes = AspectMode.entries
                     aspect = modes[(aspect.ordinal + 1) % modes.size]
+                    Toast.makeText(context, aspect.label, Toast.LENGTH_SHORT).show()
                     controlsHideToken++
                 },
                 onLongAspect = {
-                    val modes = AspectMode.entries
-                    aspect = modes[(aspect.ordinal + 1) % modes.size]
-                    Toast.makeText(context, aspect.label, Toast.LENGTH_SHORT).show()
+                    panel = if (panel == Panel.Aspect) Panel.None else Panel.Aspect
+                    controlsHideToken++
+                },
+                onQueue = {
+                    panel = Panel.Queue
+                    controlsHideToken++
+                },
+                onChapterPrev = {
+                    val pos = progress.positionMs
+                    val prev = chapters.lastOrNull { it.startMs < pos - 500L }
+                    val target = prev?.startMs ?: 0L
+                    controller?.seekTo(target)
+                    positionMs = target
+                    progress.updateProgress(target, progress.durationMs, progress.bufferedMs, progress.buffering, progress.playbackState)
+                    controlsHideToken++
+                },
+                onChapterNext = {
+                    val pos = progress.positionMs
+                    val nextCh = chapters.firstOrNull { it.startMs > pos + 500L }
+                    if (nextCh != null) {
+                        controller?.seekTo(nextCh.startMs)
+                        positionMs = nextCh.startMs
+                        progress.updateProgress(nextCh.startMs, progress.durationMs, progress.bufferedMs, progress.buffering, progress.playbackState)
+                    }
                     controlsHideToken++
                 },
                 onFrameStep = { forward ->
@@ -1386,6 +1587,7 @@ fun PlayerScreen(
                     val target = (player.currentPosition + if (forward) step else -step).coerceIn(0L, dur)
                     player.seekTo(target)
                     positionMs = target
+                    progress.updateProgress(target, dur.takeIf { it != Long.MAX_VALUE } ?: progress.durationMs, progress.bufferedMs, false, progress.playbackState)
                 },
                 onScrub = {
                     scrubbing = true
@@ -1393,9 +1595,11 @@ fun PlayerScreen(
                     controlsHideToken++
                 },
                 onScrubEnd = {
-                    val seekTo = (scrubValue * durationMs).toLong()
+                    val dur = progress.durationMs
+                    val seekTo = (scrubValue * dur).toLong()
                     controller?.seekTo(seekTo)
                     positionMs = seekTo
+                    progress.updateProgress(seekTo, dur, progress.bufferedMs, progress.buffering, progress.playbackState)
                     scrubbing = false
                 },
                 onPrev = {
@@ -1751,8 +1955,8 @@ fun PlayerScreen(
             )
         }
 
-        if (panel == Panel.Queue && showChrome) {
-            QueueDialog(
+        if (panel == Panel.Queue) {
+            QueueSheet(
                 items = playQueue,
                 currentIndex = index,
                 onDismiss = { panel = Panel.None },
@@ -1762,7 +1966,7 @@ fun PlayerScreen(
                     panel = Panel.None
                 },
                 onMove = { from, to ->
-                    if (from !in playQueue.indices || to !in playQueue.indices) return@QueueDialog
+                    if (from !in playQueue.indices || to !in playQueue.indices) return@QueueSheet
                     val mutable = playQueue.toMutableList()
                     val item = mutable.removeAt(from)
                     mutable.add(to, item)
@@ -1858,6 +2062,9 @@ private fun PlayerTopBar(
     onPlayAsAudio: () -> Unit,
     playAsAudio: Boolean,
     showPlayAsAudio: Boolean,
+    onTransform: () -> Unit = {},
+    onToggleStats: () -> Unit = {},
+    statsVisible: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -1940,6 +2147,85 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.Speed, null, tint = ForgeAccent)
                     },
                 )
+                // Quick shortcuts near top (EQ / sleep / A-B / snapshot / bookmarks)
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.equalizer), color = Color.White) },
+                    onClick = onEqualizer,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Equalizer, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.sleep_timer), color = Color.White) },
+                    onClick = onSleep,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Timer, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.ab_loop), color = Color.White) },
+                    onClick = onAbLoop,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Loop, null, tint = ForgeAccent)
+                    },
+                )
+                if (showSnapshot) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.frame_snapshot), color = Color.White) },
+                        onClick = onSnapshot,
+                        leadingIcon = {
+                            Icon(Icons.Rounded.CameraAlt, null, tint = ForgeAccent)
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.bookmarks), color = Color.White) },
+                    onClick = onBookmarks,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Bookmark, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.queue), color = Color.White) },
+                    onClick = onQueue,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.subtitle_delay_quick), color = Color.White) },
+                    onClick = onSubDelay,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ClosedCaption, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.audio_delay_quick), color = Color.White) },
+                    onClick = onAudioDelay,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.transform), color = Color.White) },
+                    onClick = onTransform,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ScreenRotation, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (statsVisible) stringResource(R.string.stats_hide)
+                            else stringResource(R.string.stats_show),
+                            color = Color.White,
+                        )
+                    },
+                    onClick = onToggleStats,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Info, null, tint = ForgeAccent)
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("Subtitles", color = Color.White) },
                     onClick = onSubtitles,
@@ -1961,28 +2247,6 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.HighQuality, null, tint = ForgeAccent)
                     },
                 )
-                // Aspect ratio cycles from the bottom control row (Fit/Fill/Zoom)
-                DropdownMenuItem(
-                    text = { Text("Sleep timer", color = Color.White) },
-                    onClick = onSleep,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Timer, null, tint = ForgeAccent)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Equalizer", color = Color.White) },
-                    onClick = onEqualizer,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Equalizer, null, tint = ForgeAccent)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("A-B loop", color = Color.White) },
-                    onClick = onAbLoop,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Loop, null, tint = ForgeAccent)
-                    },
-                )
                 DropdownMenuItem(
                     text = { Text("Orientation", color = Color.White) },
                     onClick = onOrientation,
@@ -1998,31 +2262,10 @@ private fun PlayerTopBar(
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text("Bookmarks", color = Color.White) },
-                    onClick = onBookmarks,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Bookmark, null, tint = ForgeAccent)
-                    },
-                )
-                DropdownMenuItem(
                     text = { Text("Volume boost", color = Color.White) },
                     onClick = onVolumeBoost,
                     leadingIcon = {
                         Icon(Icons.Rounded.VolumeUp, null, tint = ForgeAccent)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Subtitle delay", color = Color.White) },
-                    onClick = onSubDelay,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.ClosedCaption, null, tint = ForgeAccent)
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text("Audio delay", color = Color.White) },
-                    onClick = onAudioDelay,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
                     },
                 )
                 if (showChapters) {
@@ -2034,13 +2277,6 @@ private fun PlayerTopBar(
                         },
                     )
                 }
-                DropdownMenuItem(
-                    text = { Text("Queue", color = Color.White) },
-                    onClick = onQueue,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent)
-                    },
-                )
                 DropdownMenuItem(
                     text = { Text("Jump to time", color = Color.White) },
                     onClick = onJumpToTime,
@@ -2090,15 +2326,6 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.Share, null, tint = ForgeAccent)
                     },
                 )
-                if (showSnapshot) {
-                    DropdownMenuItem(
-                        text = { Text("Frame snapshot", color = Color.White) },
-                        onClick = onSnapshot,
-                        leadingIcon = {
-                            Icon(Icons.Rounded.CameraAlt, null, tint = ForgeAccent)
-                        },
-                    )
-                }
             }
         }
     }
@@ -2151,8 +2378,7 @@ private fun chipColors() = FilterChipDefaults.filterChipColors(
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun PlayerControls(
-    positionMs: Long,
-    durationMs: Long,
+    progress: PlayerProgressState,
     scrubbing: Boolean,
     scrubValue: Float,
     isPlaying: Boolean,
@@ -2163,10 +2389,14 @@ private fun PlayerControls(
     showFrameStep: Boolean = false,
     showAspect: Boolean = false,
     aspectLabel: String = "Fit",
+    showChapters: Boolean = false,
     onInteract: () -> Unit = {},
     onFrameStep: (forward: Boolean) -> Unit = {},
     onCycleAspect: () -> Unit = {},
     onLongAspect: () -> Unit = {},
+    onQueue: () -> Unit = {},
+    onChapterPrev: () -> Unit = {},
+    onChapterNext: () -> Unit = {},
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onPrev: () -> Unit,
@@ -2175,6 +2405,10 @@ private fun PlayerControls(
     onCycleRepeat: () -> Unit,
     onToggleShuffle: () -> Unit,
 ) {
+    val positionMs = progress.positionMs
+    val durationMs = progress.durationMs
+    val bufferedMs = progress.bufferedMs
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2187,20 +2421,33 @@ private fun PlayerControls(
             )
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {
-        val progress = if (durationMs > 0) {
+        val playProgress = if (durationMs > 0) {
             (if (scrubbing) scrubValue else positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
         } else 0f
-        Slider(
-            value = progress,
-            onValueChange = onScrub,
-            onValueChangeFinished = onScrubEnd,
-            modifier = Modifier.fillMaxWidth().height(22.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = ForgeAccent,
-                activeTrackColor = ForgeAccent,
-                inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
-            ),
-        )
+        val bufferedFrac = if (durationMs > 0) {
+            (bufferedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        } else 0f
+        Box(Modifier.fillMaxWidth().height(22.dp)) {
+            BufferedProgressTrack(
+                progress = playProgress,
+                buffered = bufferedFrac,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .padding(horizontal = 2.dp),
+            )
+            Slider(
+                value = playProgress,
+                onValueChange = onScrub,
+                onValueChangeFinished = onScrubEnd,
+                modifier = Modifier.fillMaxWidth().height(22.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = ForgeAccent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                ),
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2228,6 +2475,24 @@ private fun PlayerControls(
                     tint = if (shuffleOn) ForgeAccent else Color.White,
                     modifier = Modifier.size(22.dp),
                 )
+            }
+            IconButton(onClick = onQueue) {
+                Icon(
+                    Icons.Rounded.QueueMusic,
+                    contentDescription = stringResource(R.string.queue),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            if (showChapters && !showFrameStep) {
+                IconButton(onClick = onChapterPrev) {
+                    Icon(
+                        Icons.Rounded.ChevronLeft,
+                        contentDescription = stringResource(R.string.chapter_prev),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             if (showAspect) {
                 Column(
@@ -2300,6 +2565,16 @@ private fun PlayerControls(
                         contentDescription = "Next frame",
                         tint = Color.White,
                         modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+            if (showChapters && !showFrameStep) {
+                IconButton(onClick = onChapterNext) {
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = stringResource(R.string.chapter_next),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -3014,6 +3289,30 @@ private fun parseChapters(metadata: Metadata): List<MediaChapter> {
     return out
 }
 
+
+
+private fun applyForcedAspect(playerView: PlayerView, aspect: AspectMode) {
+    try {
+        val frame = playerView.findViewById<AspectRatioFrameLayout>(
+            androidx.media3.ui.R.id.exo_content_frame,
+        ) ?: return
+        if (frame.resizeMode != aspect.resizeMode) {
+            frame.resizeMode = aspect.resizeMode
+        }
+        val forced = aspect.forcedRatio
+        if (forced != null && forced > 0f) {
+            frame.setAspectRatio(forced)
+        } else {
+            val vs = playerView.player?.videoSize
+            if (vs != null && vs.width > 0 && vs.height > 0) {
+                val ratio = vs.width * (if (vs.pixelWidthHeightRatio > 0f) vs.pixelWidthHeightRatio else 1f) / vs.height
+                frame.setAspectRatio(ratio)
+            }
+        }
+    } catch (_: Throwable) {
+        // Aspect helpers are optional — never fail the surface.
+    }
+}
 
 private fun estimateFrameStepMs(player: Player): Long {
     return try {

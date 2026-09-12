@@ -20,6 +20,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Playback harden 1.15.0: auto-retry Unexpected runtime errors, isolate optional FX, lyrics MMR only on demand, Coil thumb cache
 - Player chrome 1.16.0: longer controls auto-hide (5.5s) paused while menus/dialogs open; optional disable in Settings; lock moved to ⋮ overflow + corner unlock; aspect Fit/Fill/Zoom side rail
 - Player chrome 1.17.0: aspect Fit/Fill/Zoom moved to bottom control row (long-press toast); lock unlock auto-hides with chrome (no permanent floating lock); Settings chrome hide delay 3s/5.5s/8s/Never; leaner top bar (speed in ⋮)
+- Player power 1.18.0: VLC-like stats overlay; mirror/rotate transform; aspect Fit/Fill/Zoom/16:9/4:3/Original; fine speed 0.25–3× (0.05 steps); quick ±100/±500 sub & audio delay; chapter prev/next; queue bottom sheet; buffering HUD + scrubber buffer; ⋮ shortcuts for EQ/sleep/A-B/snapshot/bookmarks; progress state isolated from full-tree ticks
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -49,7 +50,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Per-video brightness memory
 - Autoplay next toggle
 - Open network streams (`http`, `https`, `rtsp`)
-- Media3 player: play/pause, seek, next/prev, 0.5×–2× speed
+- Media3 player: play/pause, seek, next/prev, 0.25×–3× fine speed
 - Multi-band equalizer with presets (system Equalizer API)
 - A-B loop (set A / set B / clear)
 - Orientation lock while playing (auto follows sensor — portrait clips stay portrait; portrait / landscape locks)
@@ -57,7 +58,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Audio track selection
 - Repeat (off / one / all) and shuffle
 - Double-tap seek (configurable ±5/10/15/30s)
-- Aspect ratio: Fit / Fill / Zoom via bottom control row (tap cycle; long-press toast)
+- Aspect ratio: Fit / Fill / Zoom / 16:9 / 4:3 / Original via bottom row (tap cycle; long-press menu)
 - Sleep timer (15/30/45/60 min)
 - Player gestures: brightness (left 20%), volume (right 20%), horizontal seek (middle); controls stay tappable
 - Resume playback per media URI
@@ -117,4 +118,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.17.0 (19)
+- **version:** 1.18.0 (20)

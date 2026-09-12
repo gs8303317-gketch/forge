@@ -118,4 +118,19 @@
     <string name="lock_controls">कंट्रोल लॉक</string>
     <string name="aspect_cycle">आस्पेक्ट · %1$s</string>
     <string name="unlock_controls">अनलॉक</string>
+    <string name="stats_show">आँकड़े ओवरले</string>
+    <string name="stats_hide">आँकड़े छिपाएँ</string>
+    <string name="transform">ट्रांसफ़ॉर्म</string>
+    <string name="queue">कतार</string>
+    <string name="equalizer">इक्वलाइज़र</string>
+    <string name="sleep_timer">स्लीप टाइमर</string>
+    <string name="ab_loop">A-B लूप</string>
+    <string name="frame_snapshot">फ़्रेम स्नैपशॉट</string>
+    <string name="bookmarks">बुकमार्क</string>
+    <string name="subtitle_delay_quick">उपशीर्षक विलंब</string>
+    <string name="audio_delay_quick">ऑडियो विलंब</string>
+    <string name="chapter_prev">पिछला अध्याय</string>
+    <string name="chapter_next">अगला अध्याय</string>
+    <string name="mirror_h">क्षैतिज दर्पण</string>
+    <string name="mirror_v">ऊर्ध्वाधर दर्पण</string>
 </resources>

@@ -118,4 +118,19 @@
     <string name="lock_controls">Lock controls</string>
     <string name="aspect_cycle">Aspect · %1$s</string>
     <string name="unlock_controls">Unlock</string>
+    <string name="stats_show">Stats overlay</string>
+    <string name="stats_hide">Hide stats</string>
+    <string name="transform">Transform</string>
+    <string name="queue">Queue</string>
+    <string name="equalizer">Equalizer</string>
+    <string name="sleep_timer">Sleep timer</string>
+    <string name="ab_loop">A-B loop</string>
+    <string name="frame_snapshot">Frame snapshot</string>
+    <string name="bookmarks">Bookmarks</string>
+    <string name="subtitle_delay_quick">Subtitle delay</string>
+    <string name="audio_delay_quick">Audio delay</string>
+    <string name="chapter_prev">Previous chapter</string>
+    <string name="chapter_next">Next chapter</string>
+    <string name="mirror_h">Mirror H</string>
+    <string name="mirror_v">Mirror V</string>
 </resources>

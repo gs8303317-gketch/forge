@@ -303,12 +303,18 @@ fun DelayDialog(
                             )
                         }
                     }
-                    Row {
+                    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                        TextButton(onClick = { onChange((delayMs - 500).coerceIn(-5000, 5000)) }) {
+                            Text("−500", color = ForgeAccent)
+                        }
                         TextButton(onClick = { onChange((delayMs - 100).coerceIn(-5000, 5000)) }) {
-                            Text("−100 ms", color = ForgeAccent)
+                            Text("−100", color = ForgeAccent)
                         }
                         TextButton(onClick = { onChange((delayMs + 100).coerceIn(-5000, 5000)) }) {
-                            Text("+100 ms", color = ForgeAccent)
+                            Text("+100", color = ForgeAccent)
+                        }
+                        TextButton(onClick = { onChange((delayMs + 500).coerceIn(-5000, 5000)) }) {
+                            Text("+500", color = ForgeAccent)
                         }
                         TextButton(onClick = { onChange(0) }) {
                             Text("Reset", color = ForgeMuted)

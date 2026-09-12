@@ -11,8 +11,16 @@ import kotlinx.coroutines.withContext
 class MediaRepository(private val context: Context) {
 
     suspend fun loadLibrary(query: String = ""): List<ForgeMediaItem> = withContext(Dispatchers.IO) {
-        val videos = queryVideos(query)
-        val audio = queryAudio(query)
+        val videos = try {
+            queryVideos(query)
+        } catch (_: SecurityException) {
+            emptyList()
+        }
+        val audio = try {
+            queryAudio(query)
+        } catch (_: SecurityException) {
+            emptyList()
+        }
         (videos + audio).sortedByDescending { it.dateAdded }
     }
 

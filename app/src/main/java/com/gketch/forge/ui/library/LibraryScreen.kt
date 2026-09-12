@@ -1,5 +1,6 @@
 package com.gketch.forge.ui.library
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,14 +19,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,19 +41,31 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.MediaKind
+import com.gketch.forge.data.forgeItemFromUri
+import com.gketch.forge.data.isPlayableStreamUrl
+import com.gketch.forge.ui.permissions.hasMediaPermission
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeGraphite
@@ -58,12 +78,29 @@ import java.util.concurrent.TimeUnit
 fun LibraryScreen(
     onPlay: (items: List<ForgeMediaItem>, index: Int) -> Unit,
     onOpenSettings: () -> Unit,
+    onRequestPermission: () -> Unit,
     viewModel: LibraryViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    var showStreamDialog by remember { mutableStateOf(false) }
+    val permitted = hasMediaPermission(context)
+
+    LaunchedEffect(permitted) {
+        if (permitted) viewModel.refresh()
+    }
 
     Scaffold(
         containerColor = ForgeBlack,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showStreamDialog = true },
+                containerColor = ForgeAccent,
+                contentColor = Color.Black,
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = "Open stream")
+            }
+        },
         topBar = {
             Column(
                 modifier = Modifier
@@ -81,6 +118,9 @@ fun LibraryScreen(
                         color = ForgeAccent,
                         modifier = Modifier.weight(1f),
                     )
+                    IconButton(onClick = { showStreamDialog = true }) {
+                        Icon(Icons.Rounded.Link, contentDescription = "Open stream", tint = ForgeMuted)
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = ForgeMuted)
                     }
@@ -127,11 +167,17 @@ fun LibraryScreen(
                         colors = filterColors(),
                     )
                 }
+                if (!permitted) {
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = onRequestPermission) {
+                        Text("Grant media access to scan this device", color = ForgeAccent)
+                    }
+                }
             }
         },
     ) { padding ->
         when {
-            state.loading -> {
+            state.loading && permitted -> {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -139,7 +185,7 @@ fun LibraryScreen(
                     CircularProgressIndicator(color = ForgeAccent)
                 }
             }
-            state.error != null -> {
+            state.error != null && permitted -> {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -152,7 +198,11 @@ fun LibraryScreen(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("No media found", color = ForgeMuted)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No media found", color = ForgeMuted)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Open a network stream with the link button", color = ForgeMuted)
+                    }
                 }
             }
             else -> {
@@ -172,6 +222,77 @@ fun LibraryScreen(
             }
         }
     }
+
+    if (showStreamDialog) {
+        StreamDialog(
+            onDismiss = { showStreamDialog = false },
+            onOpen = { url ->
+                val uri = Uri.parse(url.trim())
+                val item = forgeItemFromUri(uri)
+                showStreamDialog = false
+                onPlay(listOf(item), 0)
+            },
+        )
+    }
+}
+
+@Composable
+private fun StreamDialog(
+    onDismiss: () -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    var url by remember { mutableStateOf("") }
+    val valid = isPlayableStreamUrl(url)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Open network stream", color = MaterialTheme.colorScheme.onBackground) },
+        text = {
+            Column {
+                Text(
+                    "Paste an http(s) or rtsp URL.",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("https://…  or  rtsp://…") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Uri,
+                        imeAction = ImeAction.Go,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onGo = { if (valid) onOpen(url) },
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ForgeAccent,
+                        unfocusedBorderColor = ForgeSurfaceVariant,
+                        cursorColor = ForgeAccent,
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    ),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onOpen(url) },
+                enabled = valid,
+                colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+            ) {
+                Text("Play")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = ForgeMuted)
+            }
+        },
+    )
 }
 
 @Composable

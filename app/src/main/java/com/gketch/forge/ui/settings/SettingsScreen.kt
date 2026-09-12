@@ -69,7 +69,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Premium local media player",
+                text = "Premium local + network media player",
                 style = MaterialTheme.typography.bodyMedium,
                 color = ForgeMuted,
             )
@@ -85,6 +85,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(12.dp))
+            Text(
+                text = "Network streams · speed · gestures · resume · PiP · lock-screen controls",
+                style = MaterialTheme.typography.bodyMedium,
+                color = ForgeMuted,
+            )
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = "Kotlin · Jetpack Compose · Media3",
                 style = MaterialTheme.typography.bodyMedium,

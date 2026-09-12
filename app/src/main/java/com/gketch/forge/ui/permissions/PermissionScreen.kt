@@ -61,6 +61,7 @@ fun hasMediaPermission(context: android.content.Context): Boolean {
 @Composable
 fun PermissionScreen(
     onGranted: () -> Unit,
+    onSkip: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var permanentlyDenied by remember { mutableStateOf(false) }
@@ -116,6 +117,15 @@ fun PermissionScreen(
             colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent),
         ) {
             Text("Allow access", modifier = Modifier.padding(vertical = 6.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onSkip,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = ForgeAccent),
+        ) {
+            Text("Skip for now — open a stream")
         }
         if (permanentlyDenied) {
             Spacer(Modifier.height(12.dp))

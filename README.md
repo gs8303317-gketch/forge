@@ -2,15 +2,19 @@
 
 Premium Android media player (Kotlin + Jetpack Compose + Media3).
 
-## Features (Phase 1)
+## Features
 
 - Local video & audio library via MediaStore
 - Search and filter (All / Videos / Audio)
-- Media3 (ExoPlayer) player with play/pause, seek, next/prev
-- Permission flow for media access
-- `VIEW` intent filters for `video/*` and `audio/*`
+- Open network streams (`http`, `https`, `rtsp`)
+- Media3 player: play/pause, seek, next/prev, 0.5×–2× speed
+- Player gestures: brightness (left), volume (right), horizontal seek
+- Resume playback per media URI
+- Picture-in-Picture for video
+- MediaSession notification / lock-screen controls (background audio)
+- Permission flow with skip-to-stream
+- `VIEW` intent filters for local and network media
 - Premium dark UI (black / graphite + accent)
-- Settings / About with version info
 
 ## Build
 
@@ -29,4 +33,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.0.0 (1)
+- **version:** 1.1.0 (2)

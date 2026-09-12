@@ -18,4 +18,10 @@
     <string name="pause">Pause</string>
     <string name="next">Next</string>
     <string name="previous">Previous</string>
+    <string name="open_stream">Open stream</string>
+    <string name="stream_hint">http(s) or rtsp URL</string>
+    <string name="playback_channel">Now playing</string>
+    <string name="pip">Picture in picture</string>
+    <string name="speed">Speed</string>
+    <string name="skip_for_now">Skip for now</string>
 </resources>

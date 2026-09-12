@@ -17,3 +17,49 @@ data class ForgeMediaItem(
 ) {
     val isVideo: Boolean get() = kind == MediaKind.VIDEO
 }
+
+private val AUDIO_EXTENSIONS = setOf(
+    "mp3", "m4a", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "aiff",
+)
+
+fun inferMediaKind(uri: Uri, mime: String?): MediaKind {
+    val m = mime.orEmpty().lowercase()
+    if (m.startsWith("audio")) return MediaKind.AUDIO
+    if (m.startsWith("video")) return MediaKind.VIDEO
+    val path = (uri.lastPathSegment ?: uri.path ?: uri.toString()).lowercase()
+    val ext = path.substringAfterLast('.', missingDelimiterValue = "")
+    if (ext in AUDIO_EXTENSIONS) return MediaKind.AUDIO
+    return MediaKind.VIDEO
+}
+
+fun isPlayableStreamUrl(raw: String): Boolean {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return false
+    val scheme = Uri.parse(trimmed).scheme?.lowercase() ?: return false
+    return scheme in setOf("http", "https", "rtsp", "rtsps")
+}
+
+fun forgeItemFromUri(
+    uri: Uri,
+    title: String? = null,
+    mime: String? = null,
+): ForgeMediaItem {
+    val kind = inferMediaKind(uri, mime)
+    val fallback = if (kind == MediaKind.AUDIO) "audio/*" else "video/*"
+    val name = title
+        ?: uri.lastPathSegment
+            ?.substringAfterLast('/')
+            ?.let { Uri.decode(it) }
+            ?.takeIf { it.isNotBlank() }
+        ?: "Stream"
+    return ForgeMediaItem(
+        id = uri.toString().hashCode().toLong(),
+        uri = uri,
+        title = name,
+        durationMs = 0L,
+        sizeBytes = 0L,
+        mimeType = mime?.takeIf { it.isNotBlank() } ?: fallback,
+        kind = kind,
+        dateAdded = System.currentTimeMillis() / 1000,
+    )
+}

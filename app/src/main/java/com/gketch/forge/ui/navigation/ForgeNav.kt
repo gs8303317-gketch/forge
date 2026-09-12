@@ -12,7 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.gketch.forge.data.ForgeMediaItem
-import com.gketch.forge.data.MediaKind
+import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.ui.library.LibraryScreen
 import com.gketch.forge.ui.permissions.PermissionScreen
 import com.gketch.forge.ui.permissions.hasMediaPermission
@@ -42,25 +42,17 @@ fun ForgeNav(
     var session by remember { mutableStateOf<PlaybackSession?>(null) }
     val start = if (hasMediaPermission(context)) Routes.LIBRARY else Routes.PERMISSION
 
-    LaunchedEffect(externalUri) {
-        val uri = externalUri ?: return@LaunchedEffect
-        val mime = externalMime ?: context.contentResolver.getType(uri).orEmpty()
-        val kind = if (mime.startsWith("audio")) MediaKind.AUDIO else MediaKind.VIDEO
-        val title = uri.lastPathSegment?.substringAfterLast('/') ?: "Media"
-        val item = ForgeMediaItem(
-            id = uri.hashCode().toLong(),
-            uri = uri,
-            title = title,
-            durationMs = 0L,
-            sizeBytes = 0L,
-            mimeType = mime.ifBlank { if (kind == MediaKind.AUDIO) "audio/*" else "video/*" },
-            kind = kind,
-            dateAdded = System.currentTimeMillis() / 1000,
-        )
-        session = PlaybackSession(listOf(item), 0)
+    fun openQueue(items: List<ForgeMediaItem>, index: Int) {
+        session = PlaybackSession(items, index)
         navController.navigate(Routes.PLAYER) {
             launchSingleTop = true
         }
+    }
+
+    LaunchedEffect(externalUri) {
+        val uri = externalUri ?: return@LaunchedEffect
+        val mime = externalMime ?: context.contentResolver.getType(uri)
+        openQueue(listOf(forgeItemFromUri(uri, mime = mime)), 0)
         onExternalConsumed()
     }
 
@@ -72,15 +64,18 @@ fun ForgeNav(
                         popUpTo(Routes.PERMISSION) { inclusive = true }
                     }
                 },
+                onSkip = {
+                    navController.navigate(Routes.LIBRARY) {
+                        popUpTo(Routes.PERMISSION) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Routes.LIBRARY) {
             LibraryScreen(
-                onPlay = { items, index ->
-                    session = PlaybackSession(items, index)
-                    navController.navigate(Routes.PLAYER)
-                },
+                onPlay = { items, index -> openQueue(items, index) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onRequestPermission = { navController.navigate(Routes.PERMISSION) },
             )
         }
         composable(Routes.SETTINGS) {

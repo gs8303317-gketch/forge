@@ -36,7 +36,7 @@ object ForgeAudioFx {
             bass.setStrength(bassStrength)
             bass.enabled = bassEnabled
             bassRef.set(bass)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             bassRef.set(null)
         }
         try {
@@ -44,7 +44,7 @@ object ForgeAudioFx {
             virt.setStrength(virtualizerStrength)
             virt.enabled = virtualizerEnabled
             virtRef.set(virt)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             virtRef.set(null)
         }
         lastSessionId = sessionId
@@ -52,26 +52,26 @@ object ForgeAudioFx {
 
     @Synchronized
     fun release() {
-        try { bassRef.getAndSet(null)?.release() } catch (_: Exception) {}
-        try { virtRef.getAndSet(null)?.release() } catch (_: Exception) {}
+        try { bassRef.getAndSet(null)?.release() } catch (_: Throwable) {}
+        try { virtRef.getAndSet(null)?.release() } catch (_: Throwable) {}
         lastSessionId = 0
     }
 
     fun setBassEnabled(on: Boolean) {
         bassEnabled = on
-        try { bassRef.get()?.enabled = on } catch (_: Exception) {}
+        try { bassRef.get()?.enabled = on } catch (_: Throwable) {}
     }
 
     fun setVirtualizerEnabled(on: Boolean) {
         virtualizerEnabled = on
-        try { virtRef.get()?.enabled = on } catch (_: Exception) {}
+        try { virtRef.get()?.enabled = on } catch (_: Throwable) {}
     }
 
     fun setBassStrength(value: Short) {
         bassStrength = value.coerceIn(0, 1000)
         try {
             bassRef.get()?.setStrength(bassStrength)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 
@@ -79,7 +79,7 @@ object ForgeAudioFx {
         virtualizerStrength = value.coerceIn(0, 1000)
         try {
             virtRef.get()?.setStrength(virtualizerStrength)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 
@@ -89,14 +89,14 @@ object ForgeAudioFx {
                 it.setStrength(bassStrength)
                 it.enabled = bassEnabled
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         try {
             virtRef.get()?.let {
                 it.setStrength(virtualizerStrength)
                 it.enabled = virtualizerEnabled
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 }

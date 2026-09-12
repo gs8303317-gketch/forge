@@ -17,6 +17,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Remember last library tab (Video / Audio / Playlists / Browse)
 - Back stack: system back matches toolbar (folder → parent, settings/player → previous); exit confirm at root
 - Scroll position restored for folders and media lists after back / player
+- Playback harden 1.15.0: auto-retry Unexpected runtime errors, isolate optional FX, lyrics MMR only on demand, Coil thumb cache
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -114,4 +115,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.14.1 (16)
+- **version:** 1.15.0 (17)

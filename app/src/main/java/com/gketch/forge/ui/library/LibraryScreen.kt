@@ -242,7 +242,8 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(permitted) {
-        if (permitted) viewModel.refresh()
+        // Only scan when permission becomes available; avoid full rescan on back/recompose.
+        if (permitted) viewModel.refreshIfNeeded()
     }
     LaunchedEffect(openPlaylistsTick) {
         if (openPlaylistsTick > 0) viewModel.setTab(LibraryTab.PLAYLISTS)

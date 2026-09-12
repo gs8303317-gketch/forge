@@ -44,7 +44,7 @@ object ForgeLoudness {
             enhancer.setTargetGain(gain)
             enhancerRef.set(enhancer)
             lastSessionId = sessionId
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             enhancerRef.set(null)
             lastSessionId = 0
         }
@@ -54,7 +54,7 @@ object ForgeLoudness {
     fun release() {
         try {
             enhancerRef.getAndSet(null)?.release()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         lastSessionId = 0
     }
@@ -87,7 +87,7 @@ object ForgeLoudness {
             val enhancer = enhancerRef.get() ?: return
             enhancer.setTargetGain(gain)
             enhancer.enabled = gain > 0
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 }

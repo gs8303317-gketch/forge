@@ -43,7 +43,7 @@ object ForgeEqualizer {
             eq.enabled = enabled
             eqRef.set(eq)
             lastSessionId = sessionId
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             eqRef.set(null)
             lastSessionId = 0
         }
@@ -53,7 +53,7 @@ object ForgeEqualizer {
     fun release() {
         try {
             eqRef.getAndSet(null)?.release()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         lastSessionId = 0
     }
@@ -62,13 +62,13 @@ object ForgeEqualizer {
         enabled = on
         try {
             eqRef.get()?.enabled = on
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 
     fun bandCount(): Int = try {
         eqRef.get()?.numberOfBands?.toInt() ?: 0
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         0
     }
 
@@ -88,7 +88,7 @@ object ForgeEqualizer {
                     maxLevel = max,
                 )
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             emptyList()
         }
     }
@@ -106,7 +106,7 @@ object ForgeEqualizer {
             eq.setBandLevel(index.toShort(), level)
             if (!eq.enabled && enabled) eq.enabled = true
             presetName = "Custom"
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
     }
 

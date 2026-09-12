@@ -10,6 +10,8 @@ import kotlin.math.min
  * Soft volume ramp between consecutive playlist items (single-player approximation).
  * True overlapping decode crossfade is not available in Media3 without dual players —
  * this fades out near the end and fades in after transition.
+ *
+ * Optional: never take down playback if volume writes fail.
  */
 @UnstableApi
 object ForgeCrossfade {
@@ -30,46 +32,50 @@ object ForgeCrossfade {
     val durationMs: Int get() = durationMsRef.get()
 
     fun onMediaItemTransition(player: Player) {
-        if (durationMsRef.get() <= 0) {
-            player.volume = baseVolume.coerceIn(0f, 1f)
+        try {
+            if (durationMsRef.get() <= 0) {
+                player.volume = baseVolume.coerceIn(0f, 1f)
+                fadingIn = false
+                return
+            }
+            fadingIn = true
+            fadeInStartedAt = System.currentTimeMillis()
+            player.volume = 0f
+        } catch (_: Throwable) {
             fadingIn = false
-            return
         }
-        fadingIn = true
-        fadeInStartedAt = System.currentTimeMillis()
-        player.volume = 0f
     }
 
     fun tick(player: Player, positionMs: Long, durationMsMedia: Long, sleepFading: Boolean) {
         if (sleepFading) return
         val cf = durationMsRef.get()
-        if (cf <= 0) {
-            // Don't fight other volume controls when off
-            return
-        }
-        val now = System.currentTimeMillis()
-        if (fadingIn) {
-            val elapsed = (now - fadeInStartedAt).toInt()
-            val t = min(1f, elapsed.toFloat() / cf.toFloat())
-            player.volume = (baseVolume * t).coerceIn(0f, 1f)
-            if (t >= 1f) fadingIn = false
-            return
-        }
-        if (durationMsMedia > 0 && positionMs > 0) {
-            val remaining = durationMsMedia - positionMs
-            if (remaining in 1 until cf.toLong()) {
-                val t = remaining.toFloat() / cf.toFloat()
+        if (cf <= 0) return
+        try {
+            val now = System.currentTimeMillis()
+            if (fadingIn) {
+                val elapsed = (now - fadeInStartedAt).toInt()
+                val t = min(1f, elapsed.toFloat() / cf.toFloat())
                 player.volume = (baseVolume * t).coerceIn(0f, 1f)
+                if (t >= 1f) fadingIn = false
                 return
             }
-        }
-        // Steady state
-        if (!fadingIn) {
-            val v = player.volume
-            if (v > 0.05f) baseVolume = max(baseVolume, v.coerceAtMost(1f))
-            if (kotlin.math.abs(player.volume - baseVolume) > 0.02f) {
-                player.volume = baseVolume.coerceIn(0f, 1f)
+            if (durationMsMedia > 0 && positionMs > 0) {
+                val remaining = durationMsMedia - positionMs
+                if (remaining in 1 until cf.toLong()) {
+                    val t = remaining.toFloat() / cf.toFloat()
+                    player.volume = (baseVolume * t).coerceIn(0f, 1f)
+                    return
+                }
             }
+            if (!fadingIn) {
+                val v = player.volume
+                if (v > 0.05f) baseVolume = max(baseVolume, v.coerceAtMost(1f))
+                if (kotlin.math.abs(player.volume - baseVolume) > 0.02f) {
+                    player.volume = baseVolume.coerceIn(0f, 1f)
+                }
+            }
+        } catch (_: Throwable) {
+            fadingIn = false
         }
     }
 

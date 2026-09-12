@@ -154,6 +154,7 @@ import com.gketch.forge.data.BookmarkStore
 import com.gketch.forge.data.MediaBookmark
 import com.gketch.forge.playback.ForgeCrossfade
 import com.gketch.forge.playback.ForgeLoudness
+import com.gketch.forge.playback.PlaybackErrors
 import com.gketch.forge.data.LyricsRepository
 import com.gketch.forge.data.LyricsResult
 import com.gketch.forge.playback.ForgeEngine
@@ -231,6 +232,8 @@ fun PlayerScreen(
 
     var isPlaying by remember { mutableStateOf(true) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var errorRetryCount by remember { mutableIntStateOf(0) }
+    var errorRetrying by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -400,26 +403,51 @@ fun PlayerScreen(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    playerError = error.message?.takeIf { it.isNotBlank() }
-                        ?: error.cause?.message
-                        ?: "Playback failed (code ${error.errorCode})"
-                    isPlaying = false
+                    val message = PlaybackErrors.userMessage(error)
+                    if (PlaybackErrors.shouldAutoRetry(error, errorRetryCount)) {
+                        errorRetryCount += 1
+                        errorRetrying = true
+                        playerError = null
+                        val pos = runCatching { player.currentPosition }.getOrDefault(0L)
+                        scope.launch {
+                            delay(250)
+                            val ok = runCatching {
+                                player.prepare()
+                                if (pos > 0L) player.seekTo(pos)
+                                player.play()
+                            }.isSuccess
+                            errorRetrying = false
+                            if (!ok) {
+                                playerError = message
+                                isPlaying = false
+                            }
+                        }
+                    } else {
+                        playerError = message
+                        isPlaying = false
+                        errorRetrying = false
+                    }
                 }
 
                 override fun onPlayerErrorChanged(error: PlaybackException?) {
-                    if (error == null) playerError = null
+                    if (error == null) {
+                        playerError = null
+                        errorRetrying = false
+                    }
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     autoMarkedUri = null
                     playerError = null
+                    errorRetryCount = 0
+                    errorRetrying = false
                     abPointA = null
                     abPointB = null
                     abLoopEnabled = false
                     displayedCues = emptyList()
                     chapters = emptyList()
                     lyricsResult = null
-                    ForgeCrossfade.onMediaItemTransition(player)
+                    runCatching { ForgeCrossfade.onMediaItemTransition(player) }
                     // Keep play-as-audio mode across queue items (user toggle).
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in playQueue.indices) {
@@ -549,6 +577,8 @@ fun PlayerScreen(
         resumePromptMs = null
         pendingResumeUri = null
         playerError = null
+        errorRetryCount = 0
+        errorRetrying = false
 
         if (playQueue.isEmpty()) {
             playerError = "Nothing to play"
@@ -650,19 +680,22 @@ fun PlayerScreen(
                     watchedStore.markWatched(uri)
                 }
                 val sleepFading = sleepDeadlineMs > 0L && appSettings.sleepFadeEnabled
-                ForgeCrossfade.tick(player, positionMs, durationMs, sleepFading)
+                runCatching { ForgeCrossfade.tick(player, positionMs, durationMs, sleepFading) }
             }
             delay(100)
         }
     }
 
-    LaunchedEffect(index, playQueue) {
+    // Lyrics are optional — never open MediaMetadataRetriever on the playing URI
+    // unless the user opens the Lyrics panel (concurrent MMR + ExoPlayer can fault the decoder).
+    LaunchedEffect(panel, index, playQueue) {
+        if (panel != Panel.Lyrics) return@LaunchedEffect
         val item = playQueue.getOrNull(index)
         lyricsLoading = true
         lyricsResult = null
-        val embeddedDesc = controller?.mediaMetadata?.description
+        val embeddedDesc = runCatching { controller?.mediaMetadata?.description }.getOrNull()
         val fromMeta = LyricsRepository.fromMedia3Description(embeddedDesc)
-        val loaded = LyricsRepository.load(context, item) ?: fromMeta
+        val loaded = runCatching { LyricsRepository.load(context, item) }.getOrNull() ?: fromMeta
         lyricsResult = loaded
         lyricsLoading = false
     }
@@ -781,32 +814,9 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(ForgeBlack),
     ) {
-        val fatalError = playerError
-        if (fatalError != null) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = "Can't play this media",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = fatalError,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ForgeMuted,
-                )
-                Spacer(Modifier.height(20.dp))
-                TextButton(onClick = onBack) {
-                    Text("Go back", color = ForgeAccent)
-                }
-            }
-        } else if (controller == null) {
+        // Keep the player surface mounted even on errors so Retry can re-prepare.
+        // Composition / chrome bugs must not replace the whole tree with a fake "media" failure.
+        if (controller == null) {
             CircularProgressIndicator(
                 color = ForgeAccent,
                 modifier = Modifier.align(Alignment.Center),
@@ -831,13 +841,16 @@ fun PlayerScreen(
                             }
                         },
                         update = {
-                            it.player = controller
-                            it.resizeMode = aspect.resizeMode
+                            // Avoid re-binding / recoloring every position tick (100ms recomposition).
+                            if (it.player !== controller) it.player = controller
+                            if (it.resizeMode != aspect.resizeMode) it.resizeMode = aspect.resizeMode
                             playerViewRef = it
-                            it.subtitleView?.visibility =
-                                if (subtitleDelayMs != 0) android.view.View.INVISIBLE
+                            val subVis = if (subtitleDelayMs != 0) android.view.View.INVISIBLE
                                 else android.view.View.VISIBLE
-                            ForgeVideoColor.applyTo(it)
+                            if (it.subtitleView?.visibility != subVis) {
+                                it.subtitleView?.visibility = subVis
+                            }
+                            // Color matrix applied from the color panel / factory only — not every frame.
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -953,6 +966,78 @@ fun PlayerScreen(
                             Icon(Icons.Rounded.LockOpen, contentDescription = null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
                             Text("Tap to unlock", color = Color.White, style = MaterialTheme.typography.labelLarge)
                         }
+                    }
+                }
+            }
+        }
+
+        if (errorRetrying && playerError == null) {
+            Text(
+                text = "Retrying playback…",
+                color = ForgeMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .zIndex(6f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+
+        val fatalError = playerError
+        if (fatalError != null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .zIndex(7f)
+                    .padding(24.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.82f))
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Can't play this media",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = fatalError,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ForgeMuted,
+                )
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(
+                        onClick = {
+                            val p = controller
+                            if (p == null) {
+                                onBack()
+                                return@TextButton
+                            }
+                            playerError = null
+                            errorRetrying = true
+                            val pos = runCatching { p.currentPosition }.getOrDefault(positionMs)
+                            scope.launch {
+                                delay(100)
+                                runCatching {
+                                    p.prepare()
+                                    if (pos > 0L) p.seekTo(pos)
+                                    p.play()
+                                }.onFailure { t ->
+                                    playerError = t.message ?: fatalError
+                                }
+                                errorRetrying = false
+                            }
+                        },
+                    ) {
+                        Text("Retry", color = ForgeAccent)
+                    }
+                    TextButton(onClick = onBack) {
+                        Text("Go back", color = ForgeMuted)
                     }
                 }
             }

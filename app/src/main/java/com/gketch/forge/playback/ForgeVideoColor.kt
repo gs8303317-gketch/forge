@@ -11,6 +11,9 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Brightness / contrast / saturation applied via ColorMatrix on PlayerView's TextureView.
  * Values: brightness -1..1 (0 = neutral), contrast 0.5..2 (1 = neutral), saturation 0..2 (1 = neutral).
+ *
+ * Optional: failures must not affect playback. Avoid re-applying identical state every frame
+ * (PlayerScreen recomposes on position ticks).
  */
 object ForgeVideoColor {
     data class Adjust(
@@ -23,6 +26,8 @@ object ForgeVideoColor {
     }
 
     private val adjustRef = AtomicReference(Adjust())
+    private val NEUTRAL_TAG = Any()
+
     val current: Adjust get() = adjustRef.get()
 
     fun set(brightness: Float, contrast: Float, saturation: Float) {
@@ -57,15 +62,28 @@ object ForgeVideoColor {
 
     fun applyTo(playerView: PlayerView?) {
         if (playerView == null) return
-        val surface = playerView.videoSurfaceView
-        if (surface !is TextureView) return
-        if (current.isNeutral) {
-            surface.setLayerType(View.LAYER_TYPE_NONE, null)
-        } else {
-            val paint = Paint().apply {
-                colorFilter = ColorMatrixColorFilter(buildMatrix())
+        try {
+            val surface = playerView.videoSurfaceView
+            if (surface !is TextureView) return
+            val adj = current
+            if (adj.isNeutral) {
+                if (surface.getTag(TAG_KEY) !== NEUTRAL_TAG) {
+                    surface.setLayerType(View.LAYER_TYPE_NONE, null)
+                    surface.setTag(TAG_KEY, NEUTRAL_TAG)
+                }
+            } else {
+                val key = adj.hashCode()
+                if (surface.getTag(TAG_KEY) == key) return
+                val paint = Paint().apply {
+                    colorFilter = ColorMatrixColorFilter(buildMatrix(adj))
+                }
+                surface.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+                surface.setTag(TAG_KEY, key)
             }
-            surface.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+        } catch (_: Throwable) {
+            // Color matrix is optional — never fail the player surface.
         }
     }
+
+    private val TAG_KEY = 0x46C0101 // forge color tag
 }

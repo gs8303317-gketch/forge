@@ -22,11 +22,11 @@ android {
         applicationId = "com.gketch.forge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.14.1"
+        versionCode = 17
+        versionName = "1.15.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "VERSION_NAME", "\"1.14.1\"")
-        buildConfigField("int", "VERSION_CODE", "16")
+        buildConfigField("String", "VERSION_NAME", "\"1.15.0\"")
+        buildConfigField("int", "VERSION_CODE", "17")
     }
 
     signingConfigs {
@@ -120,4 +120,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("androidx.biometric:biometric:1.1.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -247,6 +247,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun refreshIfNeeded() {
+        if (_state.value.items.isNotEmpty() && !_state.value.loading) return
+        refresh()
+    }
+
     fun refresh() {
         viewModelScope.launch {
             val keepVisible = _state.value.items.isNotEmpty()

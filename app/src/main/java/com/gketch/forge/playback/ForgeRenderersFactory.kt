@@ -61,11 +61,15 @@ class ForgeRenderersFactory(
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean,
     ): AudioSink {
-        return DefaultAudioSink.Builder(context)
+        val builder = DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-            .setAudioProcessors(arrayOf(ForgeBalance.processor()))
-            .build()
+        // Balance is optional — if processor wiring fails, ship a plain sink.
+        try {
+            builder.setAudioProcessors(arrayOf(ForgeBalance.processor()))
+        } catch (_: Throwable) {
+        }
+        return builder.build()
     }
 
     companion object {

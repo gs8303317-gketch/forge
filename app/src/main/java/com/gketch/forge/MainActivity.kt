@@ -11,10 +11,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.ui.navigation.ForgeNav
 import com.gketch.forge.ui.theme.ForgeTheme
 
@@ -32,7 +36,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         consumeIntent(intent)
         setContent {
-            ForgeTheme {
+            val appStore = remember { AppSettingsStore(this) }
+            val appSettings by appStore.settings.collectAsState(initial = AppSettings())
+            ForgeTheme(
+                accentPreset = appSettings.accentPreset,
+                dynamicColor = appSettings.dynamicColor,
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ForgeNav(
                         externalUri = externalUri,

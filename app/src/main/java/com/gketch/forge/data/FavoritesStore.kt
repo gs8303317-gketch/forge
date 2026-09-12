@@ -36,6 +36,22 @@ class FavoritesStore(context: Context) {
         return nowFavorite
     }
 
+    suspend fun addAll(items: List<ForgeMediaItem>) {
+        if (items.isEmpty()) return
+        store.edit { prefs ->
+            val current = decode(prefs[KEY] ?: "[]").toMutableList()
+            items.asReversed().forEach { item ->
+                current.removeAll { it.uri == item.uri }
+                current.add(0, item)
+            }
+            prefs[KEY] = encode(current.take(MAX_ITEMS))
+        }
+    }
+
+    suspend fun replaceAll(items: List<ForgeMediaItem>) {
+        store.edit { it[KEY] = encode(items.take(MAX_ITEMS)) }
+    }
+
     suspend fun isFavorite(uri: Uri): Boolean {
         return false // use flow; helper for sync checks via contains
     }

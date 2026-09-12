@@ -53,18 +53,21 @@ object ForgePlayerFactory {
                     ) {
                         ForgeEqualizer.attach(audioSessionId)
                         ForgeLoudness.attach(audioSessionId)
+                        ForgeAudioFx.attach(audioSessionId)
                     }
                 })
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         ForgeEqualizer.attach(audioSessionId)
                         ForgeLoudness.attach(audioSessionId)
+                        ForgeAudioFx.attach(audioSessionId)
                     }
                 })
             }
 
         ForgeEqualizer.attach(exo.audioSessionId)
         ForgeLoudness.attach(exo.audioSessionId)
+        ForgeAudioFx.attach(exo.audioSessionId)
         ForgeEngine.attach(exo)
         ForgeEngine.setAudioDelayMs(prefs.audioDelayMs)
         return exo

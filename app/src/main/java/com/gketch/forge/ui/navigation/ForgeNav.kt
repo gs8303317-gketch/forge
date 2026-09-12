@@ -1,12 +1,16 @@
 package com.gketch.forge.ui.navigation
 
 import android.net.Uri
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -14,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.ui.library.LibraryScreen
+import com.gketch.forge.ui.library.MiniPlayerBar
 import com.gketch.forge.ui.permissions.PermissionScreen
 import com.gketch.forge.ui.permissions.hasMediaPermission
 import com.gketch.forge.ui.player.PlayerScreen
@@ -72,11 +77,26 @@ fun ForgeNav(
             )
         }
         composable(Routes.LIBRARY) {
-            LibraryScreen(
-                onPlay = { items, index -> openQueue(items, index) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                onRequestPermission = { navController.navigate(Routes.PERMISSION) },
-            )
+            Box(Modifier.fillMaxSize()) {
+                LibraryScreen(
+                    onPlay = { items, index -> openQueue(items, index) },
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    onRequestPermission = { navController.navigate(Routes.PERMISSION) },
+                    onExpandPlayer = {
+                        if (session != null) {
+                            navController.navigate(Routes.PLAYER) { launchSingleTop = true }
+                        }
+                    },
+                )
+                MiniPlayerBar(
+                    onExpand = {
+                        if (session != null) {
+                            navController.navigate(Routes.PLAYER) { launchSingleTop = true }
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(onBack = { navController.popBackStack() })

@@ -42,6 +42,10 @@ class BookmarkStore(context: Context) {
         return bookmark
     }
 
+    suspend fun replaceAll(items: List<MediaBookmark>) {
+        store.edit { it[KEY] = encode(items.takeLast(MAX_ITEMS)) }
+    }
+
     suspend fun remove(id: String) {
         mutate { list -> list.filterNot { it.id == id } }
     }

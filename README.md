@@ -47,7 +47,15 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - MediaSession notification / lock-screen controls (background audio)
 - Permission flow with skip-to-stream
 - `VIEW` intent filters for local and network media
-- Premium dark UI (black / graphite + accent)
+- Premium dark UI (black / graphite + accent presets, Material You on 12+)
+- Multi-select library items (playlist / favorites / clear)
+- Hide folders from the library (manage in Settings)
+- Add folders via Storage Access Framework and play those files
+- Backup / restore JSON (settings, playlists, favorites, streams, bookmarks)
+- Sleep timer fade-out and pause vs stop
+- Mini player on the library when something is playing
+- Chapters list + jump when Media3 exposes timed metadata
+- Bass boost and Virtualizer toggles (audio session effects)
 
 ## Build
 
@@ -66,4 +74,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.6.0 (7)
+- **version:** 1.7.0 (8)

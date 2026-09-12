@@ -10,7 +10,11 @@ import kotlinx.coroutines.withContext
 
 class MediaRepository(private val context: Context) {
 
-    suspend fun loadLibrary(query: String = ""): List<ForgeMediaItem> = withContext(Dispatchers.IO) {
+    suspend fun loadLibrary(
+        query: String = "",
+        hiddenBucketIds: Set<Long> = emptySet(),
+        extra: List<ForgeMediaItem> = emptyList(),
+    ): List<ForgeMediaItem> = withContext(Dispatchers.IO) {
         val videos = try {
             queryVideos(query)
         } catch (_: SecurityException) {
@@ -21,12 +25,21 @@ class MediaRepository(private val context: Context) {
         } catch (_: SecurityException) {
             emptyList()
         }
-        (videos + audio).sortedByDescending { it.dateAdded }
+        val extras = if (query.isBlank()) extra else extra.filter {
+            it.title.contains(query, ignoreCase = true)
+        }
+        (videos + audio + extras)
+            .filter { it.bucketId !in hiddenBucketIds }
+            .distinctBy { it.uri.toString() }
+            .sortedByDescending { it.dateAdded }
     }
 
-    suspend fun loadFolders(): List<MediaFolder> = withContext(Dispatchers.IO) {
+    suspend fun loadFolders(
+        hiddenBucketIds: Set<Long> = emptySet(),
+        extra: List<ForgeMediaItem> = emptyList(),
+    ): List<MediaFolder> = withContext(Dispatchers.IO) {
         val items = try {
-            loadLibrary()
+            loadLibrary(hiddenBucketIds = hiddenBucketIds, extra = extra)
         } catch (_: Exception) {
             emptyList()
         }

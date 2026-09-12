@@ -1,0 +1,148 @@
+package com.gketch.forge.ui.library
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.media3.common.Player
+import com.gketch.forge.ui.player.rememberPlayerController
+import com.gketch.forge.ui.theme.ForgeAccent
+import com.gketch.forge.ui.theme.ForgeGraphite
+import com.gketch.forge.ui.theme.ForgeMuted
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+@Composable
+fun MiniPlayerBar(
+    onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val controller = rememberPlayerController()
+    var visible by remember { mutableStateOf(false) }
+    var title by remember { mutableStateOf("") }
+    var playing by remember { mutableStateOf(false) }
+    var progress by remember { mutableFloatStateOf(0f) }
+
+    fun sync() {
+        val p = controller
+        if (p == null || p.mediaItemCount == 0 || p.currentMediaItem == null) {
+            visible = false
+            return
+        }
+        visible = true
+        title = p.mediaMetadata.title?.toString()
+            ?: p.currentMediaItem?.mediaMetadata?.title?.toString()
+            ?: "Now playing"
+        playing = p.isPlaying
+        val dur = p.duration
+        progress = if (dur > 0) (p.currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f) else 0f
+    }
+
+    DisposableEffect(controller) {
+        val p = controller
+        if (p == null) {
+            onDispose { }
+        } else {
+            val listener = object : Player.Listener {
+                override fun onEvents(player: Player, events: Player.Events) {
+                    sync()
+                }
+            }
+            p.addListener(listener)
+            sync()
+            onDispose { p.removeListener(listener) }
+        }
+    }
+
+    LaunchedEffect(controller, visible) {
+        if (controller == null || !visible) return@LaunchedEffect
+        while (isActive) {
+            sync()
+            delay(500)
+        }
+    }
+
+    if (!visible) return
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onExpand),
+    ) {
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(2.dp),
+            color = ForgeAccent,
+            trackColor = Color.White.copy(alpha = 0.12f),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.ExpandLess,
+                contentDescription = null,
+                tint = ForgeAccent,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(
+                onClick = {
+                    val p = controller ?: return@IconButton
+                    if (p.isPlaying) p.pause() else p.play()
+                },
+            ) {
+                Icon(
+                    if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (playing) "Pause" else "Play",
+                    tint = ForgeAccent,
+                )
+            }
+        }
+    }
+}

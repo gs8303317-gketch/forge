@@ -86,6 +86,7 @@ class PlaybackService : MediaSessionService() {
         scope.cancel()
         ForgeLoudness.release()
         ForgeEqualizer.release()
+        ForgeAudioFx.release()
         exoPlayer?.let { ForgeEngine.detach(it) }
         mediaSession?.run {
             player.release()

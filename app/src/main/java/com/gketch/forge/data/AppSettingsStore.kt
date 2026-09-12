@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 
 private val Context.appSettingsDataStore by preferencesDataStore(name = "forge_app_settings")
 
@@ -39,6 +40,21 @@ enum class SubtitlePosition(val label: String, val bottomFraction: Float) {
     HIGH("High", 0.40f),
 }
 
+enum class AccentPreset(val label: String, val color: Long, val soft: Long) {
+    EMBER("Ember", 0xFFFF6B35, 0xFFFF8F66),
+    AMBER("Amber", 0xFFFFB020, 0xFFFFC85A),
+    LIME("Lime", 0xFFB8E63B, 0xFFD4F06A),
+    TEAL("Teal", 0xFF2EC4B6, 0xFF7EE0D6),
+    SKY("Sky", 0xFF4DA3FF, 0xFF8AC4FF),
+    VIOLET("Violet", 0xFFB388FF, 0xFFD0B3FF),
+    ROSE("Rose", 0xFFFF5D8F, 0xFFFF8FB0),
+}
+
+enum class SleepEndAction(val label: String) {
+    PAUSE("Pause"),
+    STOP("Stop"),
+}
+
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
@@ -47,7 +63,26 @@ data class AppSettings(
     val subtitleBackground: SubtitleBackground = SubtitleBackground.SEMI,
     val subtitlePosition: SubtitlePosition = SubtitlePosition.BOTTOM,
     val subtitleSizeSp: Float = 20f,
-)
+    val accentPreset: AccentPreset = AccentPreset.EMBER,
+    val dynamicColor: Boolean = false,
+    val sleepFadeEnabled: Boolean = false,
+    val sleepFadeSeconds: Int = 10,
+    val sleepEndAction: SleepEndAction = SleepEndAction.PAUSE,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("seekSeconds", seekSeconds)
+        .put("autoplayNext", autoplayNext)
+        .put("librarySort", librarySort.name)
+        .put("subtitleColor", subtitleColor.name)
+        .put("subtitleBackground", subtitleBackground.name)
+        .put("subtitlePosition", subtitlePosition.name)
+        .put("subtitleSizeSp", subtitleSizeSp.toDouble())
+        .put("accentPreset", accentPreset.name)
+        .put("dynamicColor", dynamicColor)
+        .put("sleepFadeEnabled", sleepFadeEnabled)
+        .put("sleepFadeSeconds", sleepFadeSeconds)
+        .put("sleepEndAction", sleepEndAction.name)
+}
 
 class AppSettingsStore(context: Context) {
     private val store = context.applicationContext.appSettingsDataStore
@@ -74,6 +109,20 @@ class AppSettingsStore(context: Context) {
                 SubtitlePosition.valueOf(p[KEY_SUB_POS] ?: SubtitlePosition.BOTTOM.name)
             }.getOrDefault(SubtitlePosition.BOTTOM),
             subtitleSizeSp = p[KEY_SUB_SIZE] ?: 20f,
+            accentPreset = runCatching {
+                AccentPreset.valueOf(p[KEY_ACCENT] ?: AccentPreset.EMBER.name)
+            }.getOrDefault(AccentPreset.EMBER),
+            dynamicColor = p[KEY_DYNAMIC] ?: false,
+            sleepFadeEnabled = p[KEY_SLEEP_FADE] ?: false,
+            sleepFadeSeconds = (p[KEY_SLEEP_FADE_SEC] ?: 10).let { s ->
+                when (s) {
+                    5, 10, 15, 30 -> s
+                    else -> 10
+                }
+            },
+            sleepEndAction = runCatching {
+                SleepEndAction.valueOf(p[KEY_SLEEP_END] ?: SleepEndAction.PAUSE.name)
+            }.getOrDefault(SleepEndAction.PAUSE),
         )
     }
 
@@ -109,6 +158,47 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_SUB_SIZE] = value }
     }
 
+    suspend fun setAccentPreset(value: AccentPreset) {
+        store.edit { it[KEY_ACCENT] = value.name }
+    }
+
+    suspend fun setDynamicColor(value: Boolean) {
+        store.edit { it[KEY_DYNAMIC] = value }
+    }
+
+    suspend fun setSleepFadeEnabled(value: Boolean) {
+        store.edit { it[KEY_SLEEP_FADE] = value }
+    }
+
+    suspend fun setSleepFadeSeconds(value: Int) {
+        val v = when (value) {
+            5, 10, 15, 30 -> value
+            else -> 10
+        }
+        store.edit { it[KEY_SLEEP_FADE_SEC] = v }
+    }
+
+    suspend fun setSleepEndAction(value: SleepEndAction) {
+        store.edit { it[KEY_SLEEP_END] = value.name }
+    }
+
+    suspend fun replaceFromJson(o: JSONObject) {
+        store.edit { p ->
+            if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
+            if (o.has("autoplayNext")) p[KEY_AUTOPLAY] = o.optBoolean("autoplayNext", true)
+            if (o.has("librarySort")) p[KEY_SORT] = o.optString("librarySort", LibrarySort.NAME.name)
+            if (o.has("subtitleColor")) p[KEY_SUB_COLOR] = o.optString("subtitleColor")
+            if (o.has("subtitleBackground")) p[KEY_SUB_BG] = o.optString("subtitleBackground")
+            if (o.has("subtitlePosition")) p[KEY_SUB_POS] = o.optString("subtitlePosition")
+            if (o.has("subtitleSizeSp")) p[KEY_SUB_SIZE] = o.optDouble("subtitleSizeSp", 20.0).toFloat()
+            if (o.has("accentPreset")) p[KEY_ACCENT] = o.optString("accentPreset")
+            if (o.has("dynamicColor")) p[KEY_DYNAMIC] = o.optBoolean("dynamicColor", false)
+            if (o.has("sleepFadeEnabled")) p[KEY_SLEEP_FADE] = o.optBoolean("sleepFadeEnabled", false)
+            if (o.has("sleepFadeSeconds")) p[KEY_SLEEP_FADE_SEC] = o.optInt("sleepFadeSeconds", 10)
+            if (o.has("sleepEndAction")) p[KEY_SLEEP_END] = o.optString("sleepEndAction")
+        }
+    }
+
     companion object {
         private val KEY_SEEK = intPreferencesKey("seek_seconds")
         private val KEY_AUTOPLAY = booleanPreferencesKey("autoplay_next")
@@ -117,6 +207,12 @@ class AppSettingsStore(context: Context) {
         private val KEY_SUB_BG = stringPreferencesKey("sub_bg")
         private val KEY_SUB_POS = stringPreferencesKey("sub_pos")
         private val KEY_SUB_SIZE = floatPreferencesKey("sub_size_sp")
+        private val KEY_ACCENT = stringPreferencesKey("accent_preset")
+        private val KEY_DYNAMIC = booleanPreferencesKey("dynamic_color")
+        private val KEY_SLEEP_FADE = booleanPreferencesKey("sleep_fade")
+        private val KEY_SLEEP_FADE_SEC = intPreferencesKey("sleep_fade_sec")
+        private val KEY_SLEEP_END = stringPreferencesKey("sleep_end_action")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
+        val FADE_OPTIONS = listOf(5, 10, 15, 30)
     }
 }

@@ -102,6 +102,7 @@ import androidx.core.util.Consumer
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Metadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
@@ -125,6 +126,7 @@ import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import com.gketch.forge.data.AppSettings
 import com.gketch.forge.data.AppSettingsStore
+import com.gketch.forge.data.SleepEndAction
 import com.gketch.forge.data.BrightnessStore
 import com.gketch.forge.data.SubtitleBackground
 import com.gketch.forge.data.SubtitleColor
@@ -137,7 +139,10 @@ import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.playback.ForgeAudioFx
 import com.gketch.forge.playback.ForgeEqualizer
+import androidx.media3.extractor.metadata.id3.ChapterFrame
+import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import com.gketch.forge.ui.library.formatDuration
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
@@ -157,7 +162,9 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters }
+
+private data class MediaChapter(val title: String, val startMs: Long)
 
 private enum class OrientationLock(val label: String) {
     AUTO("Auto"),
@@ -243,6 +250,10 @@ fun PlayerScreen(
     var videoWidth by remember { mutableIntStateOf(0) }
     var videoHeight by remember { mutableIntStateOf(0) }
     var videoTrackLabels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var chapters by remember { mutableStateOf<List<MediaChapter>>(emptyList()) }
+    var bassOn by remember { mutableStateOf(ForgeAudioFx.bassEnabled) }
+    var virtOn by remember { mutableStateOf(ForgeAudioFx.virtualizerEnabled) }
+    var sleepBaseVolume by remember { mutableFloatStateOf(1f) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -327,6 +338,7 @@ fun PlayerScreen(
                     abPointB = null
                     abLoopEnabled = false
                     displayedCues = emptyList()
+                    chapters = emptyList()
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in playQueue.indices) {
                         index = newIndex
@@ -390,6 +402,13 @@ fun PlayerScreen(
                     shuffleOn = shuffleModeEnabled
                 }
 
+                override fun onMetadata(metadata: Metadata) {
+                    val found = parseChapters(metadata)
+                    if (found.isNotEmpty()) {
+                        chapters = (chapters + found).distinctBy { it.startMs }.sortedBy { it.startMs }
+                    }
+                }
+
                 override fun onCues(cueGroup: CueGroup) {
                     val offsetMs = subtitleDelayMs
                     if (!subtitlesEnabled) {
@@ -433,6 +452,13 @@ fun PlayerScreen(
     LaunchedEffect(controller, playQueue, startIndex) {
         val player = controller ?: return@LaunchedEffect
         val key = playQueue.joinToString("|") { it.uri.toString() } + "#$startIndex"
+        val playerUris = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        val queueUris = playQueue.map { it.uri.toString() }
+        if (playerUris == queueUris) {
+            loadedKey = key
+            index = player.currentMediaItemIndex.coerceIn(0, (playQueue.size - 1).coerceAtLeast(0))
+            return@LaunchedEffect
+        }
         val alreadySame = player.currentMediaItem?.mediaId == playQueue.getOrNull(startIndex)?.uri?.toString() &&
             player.mediaItemCount == playQueue.size
         if (alreadySame && loadedKey == key) return@LaunchedEffect
@@ -521,6 +547,8 @@ fun PlayerScreen(
             eqEnabled = ForgeEqualizer.enabled
             eqBands = ForgeEqualizer.bands()
             eqPreset = ForgeEqualizer.presetName
+            bassOn = ForgeAudioFx.bassEnabled
+            virtOn = ForgeAudioFx.virtualizerEnabled
         }
     }
 
@@ -558,22 +586,33 @@ fun PlayerScreen(
         if (!subtitlesEnabled) displayedCues = emptyList()
     }
 
-    LaunchedEffect(sleepDeadlineMs) {
+    LaunchedEffect(sleepDeadlineMs, appSettings.sleepFadeEnabled, appSettings.sleepFadeSeconds, appSettings.sleepEndAction) {
         if (sleepDeadlineMs <= 0L) {
             sleepRemainingSec = 0
             return@LaunchedEffect
         }
+        sleepBaseVolume = controller?.volume?.takeIf { it > 0f } ?: 1f
         while (isActive && sleepDeadlineMs > 0L) {
             val left = ((sleepDeadlineMs - System.currentTimeMillis()) / 1000L).toInt()
             if (left <= 0) {
-                controller?.pause()
+                controller?.volume = sleepBaseVolume
+                if (appSettings.sleepEndAction == SleepEndAction.STOP) {
+                    controller?.stop()
+                } else {
+                    controller?.pause()
+                }
                 sleepMinutes = null
                 sleepDeadlineMs = 0L
                 sleepRemainingSec = 0
                 break
             }
+            val fadeSec = appSettings.sleepFadeSeconds.coerceAtLeast(1)
+            if (appSettings.sleepFadeEnabled && left <= fadeSec) {
+                val frac = left.toFloat() / fadeSec.toFloat()
+                controller?.volume = (sleepBaseVolume * frac).coerceIn(0f, 1f)
+            }
             sleepRemainingSec = left
-            delay(500)
+            delay(250)
         }
     }
 
@@ -859,8 +898,13 @@ fun PlayerScreen(
                     moreMenu = false
                     panel = Panel.Queue
                 },
+                onChapters = {
+                    moreMenu = false
+                    panel = Panel.Chapters
+                },
                 showAspect = isVideoSurface,
                 showSnapshot = isVideoSurface,
+                showChapters = chapters.isNotEmpty(),
             )
         }
 
@@ -909,6 +953,7 @@ fun PlayerScreen(
                     onClick = {
                         sleepMinutes = null
                         sleepDeadlineMs = 0L
+                        controller?.volume = sleepBaseVolume
                         panel = Panel.None
                     },
                     label = { Text("Off") },
@@ -920,12 +965,30 @@ fun PlayerScreen(
                         onClick = {
                             sleepMinutes = mins
                             sleepDeadlineMs = System.currentTimeMillis() + mins * 60_000L
+                            sleepBaseVolume = controller?.volume?.takeIf { it > 0f } ?: 1f
                             panel = Panel.None
                         },
                         label = { Text("${mins}m") },
                         colors = chipColors(),
                     )
                 }
+                FilterChip(
+                    selected = appSettings.sleepFadeEnabled,
+                    onClick = {
+                        scope.launch { appSettingsStore.setSleepFadeEnabled(!appSettings.sleepFadeEnabled) }
+                    },
+                    label = { Text(if (appSettings.sleepFadeEnabled) "Fade ${appSettings.sleepFadeSeconds}s" else "Fade off") },
+                    colors = chipColors(),
+                )
+                FilterChip(
+                    selected = appSettings.sleepEndAction == SleepEndAction.STOP,
+                    onClick = {
+                        val next = if (appSettings.sleepEndAction == SleepEndAction.STOP) SleepEndAction.PAUSE else SleepEndAction.STOP
+                        scope.launch { appSettingsStore.setSleepEndAction(next) }
+                    },
+                    label = { Text("End · ${appSettings.sleepEndAction.label}") },
+                    colors = chipColors(),
+                )
             }
         }
 
@@ -1042,6 +1105,8 @@ fun PlayerScreen(
                 enabled = eqEnabled,
                 bands = eqBands,
                 presetName = eqPreset,
+                bassOn = bassOn,
+                virtOn = virtOn,
                 onDismiss = { panel = Panel.None },
                 onToggle = { on ->
                     ForgeEqualizer.setEnabled(on)
@@ -1058,6 +1123,26 @@ fun PlayerScreen(
                     eqEnabled = true
                     eqBands = ForgeEqualizer.bands()
                     eqPreset = ForgeEqualizer.presetName
+                },
+                onBass = { on ->
+                    ForgeAudioFx.setBassEnabled(on)
+                    bassOn = on
+                },
+                onVirt = { on ->
+                    ForgeAudioFx.setVirtualizerEnabled(on)
+                    virtOn = on
+                },
+            )
+        }
+
+        if (panel == Panel.Chapters && showChrome) {
+            ChaptersDialog(
+                chapters = chapters,
+                onDismiss = { panel = Panel.None },
+                onJump = { ms ->
+                    controller?.seekTo(ms)
+                    positionMs = ms
+                    panel = Panel.None
                 },
             )
         }
@@ -1337,6 +1422,8 @@ private fun PlayerTopBar(
     onSnapshot: () -> Unit,
     onShare: () -> Unit,
     onQueue: () -> Unit,
+    onChapters: () -> Unit,
+    showChapters: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -1503,6 +1590,15 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.Audiotrack, null, tint = ForgeAccent)
                     },
                 )
+                if (showChapters) {
+                    DropdownMenuItem(
+                        text = { Text("Chapters", color = Color.White) },
+                        onClick = onChapters,
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Bookmark, null, tint = ForgeAccent)
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Queue", color = Color.White) },
                     onClick = onQueue,
@@ -1942,10 +2038,14 @@ private fun EqualizerDialog(
     enabled: Boolean,
     bands: List<com.gketch.forge.playback.EqBand>,
     presetName: String,
+    bassOn: Boolean,
+    virtOn: Boolean,
     onDismiss: () -> Unit,
     onToggle: (Boolean) -> Unit,
     onBand: (Int, Float) -> Unit,
     onPreset: (com.gketch.forge.playback.EqPreset) -> Unit,
+    onBass: (Boolean) -> Unit,
+    onVirt: (Boolean) -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1985,6 +2085,37 @@ private fun EqualizerDialog(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Bass boost", color = Color.White)
+                    Switch(
+                        checked = bassOn,
+                        onCheckedChange = onBass,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = ForgeAccent,
+                            checkedThumbColor = Color.Black,
+                        ),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Virtualizer", color = Color.White)
+                    Switch(
+                        checked = virtOn,
+                        onCheckedChange = onVirt,
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = ForgeAccent,
+                            checkedThumbColor = Color.Black,
+                        ),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 if (bands.isEmpty()) {
                     Text(
                         "Equalizer attaches after playback starts.",
@@ -2292,6 +2423,61 @@ private fun shareCurrentMedia(context: android.content.Context, item: ForgeMedia
     } catch (e: Exception) {
         Toast.makeText(context, e.message ?: "Share failed", Toast.LENGTH_SHORT).show()
     }
+}
+
+@Composable
+private fun ChaptersDialog(
+    chapters: List<MediaChapter>,
+    onDismiss: () -> Unit,
+    onJump: (Long) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Chapters", color = Color.White) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (chapters.isEmpty()) {
+                    Text("No timed chapters in this file.", color = ForgeMuted)
+                } else {
+                    chapters.forEach { ch ->
+                        Text(
+                            text = "${formatDuration(ch.startMs)}  ·  ${ch.title}",
+                            color = Color.White,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onJump(ch.startMs) }
+                                .padding(vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
+private fun parseChapters(metadata: Metadata): List<MediaChapter> {
+    val out = mutableListOf<MediaChapter>()
+    for (i in 0 until metadata.length()) {
+        when (val entry = metadata.get(i)) {
+            is ChapterFrame -> {
+                var title = entry.chapterId.ifBlank { "Chapter" }
+                for (j in 0 until entry.getSubFrameCount()) {
+                    val frame = entry.getSubFrame(j) as? TextInformationFrame
+                    val text = frame?.values?.firstOrNull()?.takeIf { it.isNotBlank() }
+                    if (text != null) {
+                        title = text
+                        break
+                    }
+                }
+                out += MediaChapter(title, entry.startTimeMs.toLong().coerceAtLeast(0L))
+            }
+        }
+    }
+    return out
 }
 
 private fun formatSpeed(speed: Float): String {

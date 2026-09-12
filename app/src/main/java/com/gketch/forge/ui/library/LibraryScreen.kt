@@ -1,6 +1,7 @@
 package com.gketch.forge.ui.library
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -37,6 +38,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileDownload
@@ -56,6 +60,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.ViewList
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -118,6 +123,7 @@ fun LibraryScreen(
     onPlay: (items: List<ForgeMediaItem>, index: Int) -> Unit,
     onOpenSettings: () -> Unit,
     onRequestPermission: () -> Unit,
+    onExpandPlayer: () -> Unit = {},
     viewModel: LibraryViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -128,6 +134,8 @@ fun LibraryScreen(
     var renamePlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
     var renameStream by remember { mutableStateOf<SavedStream?>(null) }
     var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
+    var addSelectedToPlaylist by remember { mutableStateOf(false) }
+    var hideFolder by remember { mutableStateOf<MediaFolder?>(null) }
     var exportPlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
     var m3uMessage by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -148,6 +156,15 @@ fun LibraryScreen(
             viewModel.importM3u(uri) { msg -> m3uMessage = msg }
         }
     }
+    var snackScopeMsg by remember { mutableStateOf<String?>(null) }
+    val safTreeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.addSafFolder(uri, null)
+            snackScopeMsg = "Folder added"
+        }
+    }
     val exportM3uLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
     ) { uri ->
@@ -166,6 +183,14 @@ fun LibraryScreen(
         val msg = m3uMessage ?: return@LaunchedEffect
         snackbar.showSnackbar(msg)
         m3uMessage = null
+    }
+    LaunchedEffect(snackScopeMsg) {
+        val msg = snackScopeMsg ?: return@LaunchedEffect
+        snackbar.showSnackbar(msg)
+        snackScopeMsg = null
+    }
+    BackHandler(enabled = state.selecting) {
+        viewModel.clearSelection()
     }
 
     Scaffold(
@@ -207,6 +232,29 @@ fun LibraryScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    if (state.selecting) {
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Clear selection", tint = Color.White)
+                        }
+                        Text(
+                            text = "${state.selectedKeys.size} selected",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = { viewModel.favoriteSelected() },
+                            enabled = state.selectedKeys.isNotEmpty(),
+                        ) {
+                            Icon(Icons.Rounded.Star, contentDescription = "Add to favorites", tint = ForgeAccent)
+                        }
+                        IconButton(
+                            onClick = { addSelectedToPlaylist = true },
+                            enabled = state.selectedKeys.isNotEmpty(),
+                        ) {
+                            Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "Add to playlist", tint = ForgeAccent)
+                        }
+                    } else {
                     Text(
                         text = "Forge",
                         style = MaterialTheme.typography.headlineLarge,
@@ -247,6 +295,7 @@ fun LibraryScreen(
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = ForgeMuted)
+                    }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -353,6 +402,8 @@ fun LibraryScreen(
                 onPlay = onPlay,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddToPlaylist = { addToPlaylistItem = it },
+                onToggleSelect = viewModel::toggleSelected,
+                onBeginSelect = viewModel::beginSelection,
             )
             LibraryTab.FOLDERS -> FoldersBody(
                 state = state,
@@ -362,6 +413,10 @@ fun LibraryScreen(
                 onPlay = onPlay,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddToPlaylist = { addToPlaylistItem = it },
+                onHideFolder = { hideFolder = it },
+                onAddSafFolder = { safTreeLauncher.launch(null) },
+                onToggleSelect = viewModel::toggleSelected,
+                onBeginSelect = viewModel::beginSelection,
             )
             LibraryTab.PLAYLISTS -> PlaylistsBody(
                 state = state,
@@ -504,6 +559,44 @@ fun LibraryScreen(
             },
         )
     }
+    if (addSelectedToPlaylist) {
+        AddToPlaylistDialog(
+            playlists = state.playlists,
+            onDismiss = { addSelectedToPlaylist = false },
+            onPick = { id ->
+                viewModel.addSelectedToPlaylist(id)
+                addSelectedToPlaylist = false
+            },
+            onCreate = {
+                showCreatePlaylist = true
+                addSelectedToPlaylist = false
+            },
+        )
+    }
+    hideFolder?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { hideFolder = null },
+            containerColor = ForgeGraphite,
+            title = { Text("Hide folder", color = Color.White) },
+            text = {
+                Text(
+                    "Hide “${folder.name}” from the library? You can unhide it in Settings.",
+                    color = ForgeMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.hideFolder(folder)
+                        hideFolder = null
+                    },
+                ) { Text("Hide", color = ForgeAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { hideFolder = null }) { Text("Cancel", color = ForgeMuted) }
+            },
+        )
+    }
 }
 
 @Composable
@@ -514,6 +607,8 @@ private fun LibraryBody(
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
+    onToggleSelect: (ForgeMediaItem) -> Unit,
+    onBeginSelect: (ForgeMediaItem) -> Unit,
 ) {
     when {
         state.loading && permitted && state.filtered.isEmpty() && state.recent.isEmpty() && state.favorites.isEmpty() -> {
@@ -539,7 +634,7 @@ private fun LibraryBody(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(140.dp),
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -573,7 +668,13 @@ private fun LibraryBody(
                     MediaGridCard(
                         item = item,
                         favorite = state.favoriteUris.contains(item.uri.toString()),
-                        onClick = { onPlay(state.filtered, index) },
+                        selected = item.stableKey() in state.selectedKeys,
+                        selecting = state.selecting,
+                        onClick = {
+                            if (state.selecting) onToggleSelect(item)
+                            else onPlay(state.filtered, index)
+                        },
+                        onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
                     )
@@ -583,7 +684,7 @@ private fun LibraryBody(
         else -> {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (state.favorites.isNotEmpty() && state.query.isBlank()) {
@@ -616,7 +717,13 @@ private fun LibraryBody(
                     MediaRow(
                         item = item,
                         favorite = state.favoriteUris.contains(item.uri.toString()),
-                        onClick = { onPlay(state.filtered, index) },
+                        selected = item.stableKey() in state.selectedKeys,
+                        selecting = state.selecting,
+                        onClick = {
+                            if (state.selecting) onToggleSelect(item)
+                            else onPlay(state.filtered, index)
+                        },
+                        onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
                     )
@@ -635,19 +742,30 @@ private fun FoldersBody(
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
+    onHideFolder: (MediaFolder) -> Unit,
+    onAddSafFolder: () -> Unit,
+    onToggleSelect: (ForgeMediaItem) -> Unit,
+    onBeginSelect: (ForgeMediaItem) -> Unit,
 ) {
     val folder = state.selectedFolder
     if (folder == null) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(150.dp),
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                TextButton(onClick = onAddSafFolder) {
+                    Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Add folder", color = ForgeAccent)
+                }
+            }
             if (state.folders.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("No folders found", color = ForgeMuted, modifier = Modifier.padding(24.dp))
+                    Text("No folders found. Add a folder from storage.", color = ForgeMuted, modifier = Modifier.padding(24.dp))
                 }
             }
             items(
@@ -655,7 +773,11 @@ private fun FoldersBody(
                 key = { state.folders[it].bucketId },
             ) { i ->
                 val f = state.folders[i]
-                FolderCard(folder = f, onClick = { onOpenFolder(f) })
+                FolderCard(
+                    folder = f,
+                    onClick = { onOpenFolder(f) },
+                    onLongClick = { onHideFolder(f) },
+                )
             }
         }
     } else {
@@ -681,7 +803,7 @@ private fun FoldersBody(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(140.dp),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -689,7 +811,13 @@ private fun FoldersBody(
                     MediaGridCard(
                         item = item,
                         favorite = state.favoriteUris.contains(item.uri.toString()),
-                        onClick = { onPlay(state.folderItems, index) },
+                        selected = item.stableKey() in state.selectedKeys,
+                        selecting = state.selecting,
+                        onClick = {
+                            if (state.selecting) onToggleSelect(item)
+                            else onPlay(state.folderItems, index)
+                        },
+                        onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
                     )
@@ -718,7 +846,7 @@ private fun PlaylistsBody(
     if (selected == null) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
@@ -780,7 +908,7 @@ private fun PlaylistsBody(
                 }
             }
             LazyColumn(
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (selected.items.isEmpty()) {
@@ -902,7 +1030,10 @@ private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
 private fun MediaGridCard(
     item: ForgeMediaItem,
     favorite: Boolean,
+    selected: Boolean = false,
+    selecting: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
@@ -910,12 +1041,23 @@ private fun MediaGridCard(
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
-            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+            .background(if (selected) ForgeSurfaceVariant else ForgeGraphite)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(8.dp),
     ) {
         Box {
             ThumbBox(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
+            if (selected) {
+                Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = ForgeAccent,
+                    modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp),
+                )
+            }
             IconButton(
                 onClick = onToggleFavorite,
                 modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
@@ -960,7 +1102,10 @@ private fun MediaGridCard(
 private fun MediaRow(
     item: ForgeMediaItem,
     favorite: Boolean,
+    selected: Boolean = false,
+    selecting: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onRemove: (() -> Unit)? = null,
@@ -970,8 +1115,14 @@ private fun MediaRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
-            .combinedClickable(onClick = onClick, onLongClick = { menu = true })
+            .background(if (selected) ForgeSurfaceVariant else ForgeGraphite)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    onLongClick()
+                    if (!selecting) menu = true
+                },
+            )
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1014,13 +1165,14 @@ private fun MediaRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderCard(folder: MediaFolder, onClick: () -> Unit) {
+private fun FolderCard(folder: MediaFolder, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
             .background(ForgeGraphite)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
     ) {
         Box(
@@ -1217,7 +1369,7 @@ private fun StreamsBody(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (streams.isEmpty()) {

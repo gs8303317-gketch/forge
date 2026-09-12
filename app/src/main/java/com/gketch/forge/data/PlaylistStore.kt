@@ -49,6 +49,27 @@ class PlaylistStore(context: Context) {
         mutate { list -> list.filterNot { it.id == id } }
     }
 
+    suspend fun addItems(playlistId: String, items: List<ForgeMediaItem>) {
+        if (items.isEmpty()) return
+        mutate { list ->
+            list.map { pl ->
+                if (pl.id != playlistId) pl
+                else {
+                    val merged = pl.items.toMutableList()
+                    items.forEach { item ->
+                        merged.removeAll { it.uri == item.uri }
+                        merged += item
+                    }
+                    pl.copy(items = merged, updatedAt = System.currentTimeMillis())
+                }
+            }
+        }
+    }
+
+    suspend fun replaceAll(playlists: List<ForgePlaylist>) {
+        store.edit { it[KEY] = encode(playlists) }
+    }
+
     suspend fun addItem(playlistId: String, item: ForgeMediaItem) {
         mutate { list ->
             list.map { pl ->

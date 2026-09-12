@@ -1,6 +1,7 @@
 package com.gketch.forge.ui.library
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,8 @@ import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.FavoritesStore
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
+import com.gketch.forge.data.HiddenFolder
+import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.LibrarySort
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
@@ -16,6 +19,9 @@ import com.gketch.forge.data.M3uPlaylistIo
 import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.data.SafFolder
+import com.gketch.forge.data.SafFoldersStore
+import com.gketch.forge.data.SafMediaScanner
 import com.gketch.forge.data.SavedStream
 import com.gketch.forge.data.SavedStreamsStore
 import kotlinx.coroutines.Job
@@ -42,6 +48,9 @@ data class LibraryUiState(
     val playlists: List<ForgePlaylist> = emptyList(),
     val selectedPlaylist: ForgePlaylist? = null,
     val savedStreams: List<SavedStream> = emptyList(),
+    val hiddenFolders: List<HiddenFolder> = emptyList(),
+    val hiddenBucketIds: Set<Long> = emptySet(),
+    val safFolders: List<SafFolder> = emptyList(),
     val query: String = "",
     val filter: LibraryFilter = LibraryFilter.ALL,
     val sort: LibrarySort = LibrarySort.NAME,
@@ -49,6 +58,8 @@ data class LibraryUiState(
     val layout: LibraryLayout = LibraryLayout.GRID,
     val loading: Boolean = true,
     val error: String? = null,
+    val selecting: Boolean = false,
+    val selectedKeys: Set<String> = emptySet(),
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -59,12 +70,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val playlistStore = PlaylistStore(application)
     private val savedStreamsStore = SavedStreamsStore(application)
     private val settingsStore = AppSettingsStore(application)
+    private val hiddenStore = HiddenFoldersStore(application)
+    private val safStore = SafFoldersStore(application)
+    private val safScanner = SafMediaScanner(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
 
     init {
-        refresh()
         viewModelScope.launch {
             recentStore.recent.collect { items ->
                 _state.update { it.copy(recent = items) }
@@ -105,14 +118,37 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+        viewModelScope.launch {
+            hiddenStore.hidden.collect { list ->
+                _state.update {
+                    it.copy(
+                        hiddenFolders = list,
+                        hiddenBucketIds = list.map { f -> f.bucketId }.toSet(),
+                    )
+                }
+                refresh()
+            }
+        }
+        viewModelScope.launch {
+            safStore.folders.collect { list ->
+                _state.update { it.copy(safFolders = list) }
+                refresh()
+            }
+        }
     }
 
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
             try {
-                val items = repo.loadLibrary(_state.value.query)
-                val folders = repo.loadFolders()
+                val hidden = _state.value.hiddenBucketIds
+                val safItems = try {
+                    safScanner.scan(_state.value.safFolders)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val items = repo.loadLibrary(_state.value.query, hidden, safItems)
+                val folders = repo.loadFolders(hidden, safItems)
                 _state.update {
                     val folderItems = it.selectedFolder?.let { folder ->
                         items.filter { m -> m.bucketId == folder.bucketId }
@@ -163,6 +199,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 selectedFolder = if (tab != LibraryTab.FOLDERS) null else it.selectedFolder,
                 selectedPlaylist = if (tab != LibraryTab.PLAYLISTS) null else it.selectedPlaylist,
                 folderItems = if (tab != LibraryTab.FOLDERS) emptyList() else it.folderItems,
+                selecting = false,
+                selectedKeys = emptySet(),
             )
         }
     }
@@ -173,7 +211,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun openFolder(folder: MediaFolder) {
         viewModelScope.launch {
-            val items = repo.loadFolderItems(folder.bucketId)
+            val items = _state.value.items
+                .filter { it.bucketId == folder.bucketId }
+                .sortedBy { it.title.lowercase() }
+                .ifEmpty { repo.loadFolderItems(folder.bucketId) }
+                .filter { it.bucketId !in _state.value.hiddenBucketIds }
             _state.update {
                 it.copy(selectedFolder = folder, folderItems = items, tab = LibraryTab.FOLDERS)
             }
@@ -218,6 +260,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun addToPlaylist(playlistId: String, item: ForgeMediaItem) {
         viewModelScope.launch { playlistStore.addItem(playlistId, item) }
+    }
+
+    fun addItemsToPlaylist(playlistId: String, items: List<ForgeMediaItem>) {
+        viewModelScope.launch { playlistStore.addItems(playlistId, items) }
     }
 
     fun removeFromPlaylist(playlistId: String, uri: Uri) {
@@ -291,6 +337,96 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeStream(id: String) {
         viewModelScope.launch { savedStreamsStore.remove(id) }
+    }
+
+    fun beginSelection(item: ForgeMediaItem) {
+        _state.update {
+            it.copy(selecting = true, selectedKeys = setOf(item.stableKey()))
+        }
+    }
+
+    fun toggleSelected(item: ForgeMediaItem) {
+        _state.update { st ->
+            if (!st.selecting) {
+                st.copy(selecting = true, selectedKeys = setOf(item.stableKey()))
+            } else {
+                val next = st.selectedKeys.toMutableSet()
+                val key = item.stableKey()
+                if (!next.add(key)) next.remove(key)
+                st.copy(selecting = next.isNotEmpty(), selectedKeys = next)
+            }
+        }
+    }
+
+    fun clearSelection() {
+        _state.update { it.copy(selecting = false, selectedKeys = emptySet()) }
+    }
+
+    fun selectedItems(): List<ForgeMediaItem> {
+        val st = _state.value
+        val pool = when {
+            st.tab == LibraryTab.FOLDERS && st.selectedFolder != null -> st.folderItems
+            else -> st.filtered
+        }
+        return pool.filter { it.stableKey() in st.selectedKeys }
+    }
+
+    fun favoriteSelected() {
+        val items = selectedItems()
+        viewModelScope.launch { favoritesStore.addAll(items) }
+        clearSelection()
+    }
+
+    fun addSelectedToPlaylist(playlistId: String) {
+        val items = selectedItems()
+        viewModelScope.launch { playlistStore.addItems(playlistId, items) }
+        clearSelection()
+    }
+
+    fun hideFolder(folder: MediaFolder) {
+        viewModelScope.launch {
+            hiddenStore.hide(folder)
+            _state.update {
+                if (it.selectedFolder?.bucketId == folder.bucketId) {
+                    it.copy(selectedFolder = null, folderItems = emptyList())
+                } else it
+            }
+        }
+    }
+
+    fun unhideFolder(bucketId: Long) {
+        viewModelScope.launch { hiddenStore.unhide(bucketId) }
+    }
+
+    fun addSafFolder(uri: Uri, name: String?) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            try {
+                app.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (_: SecurityException) {
+            }
+            val label = name?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
+                ?: "Folder"
+            safStore.add(uri, label)
+        }
+    }
+
+    fun removeSafFolder(uri: String) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            try {
+                app.contentResolver.releasePersistableUriPermission(
+                    Uri.parse(uri),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (_: Exception) {
+            }
+            safStore.remove(uri)
+        }
     }
 
     private fun applyFilterAndSort(

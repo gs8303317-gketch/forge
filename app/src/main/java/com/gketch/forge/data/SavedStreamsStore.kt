@@ -54,6 +54,10 @@ class SavedStreamsStore(context: Context) {
         }
     }
 
+    suspend fun replaceAll(items: List<SavedStream>) {
+        store.edit { it[KEY] = encode(items.take(MAX_ITEMS)) }
+    }
+
     suspend fun remove(id: String) {
         mutate { list -> list.filterNot { it.id == id } }
     }

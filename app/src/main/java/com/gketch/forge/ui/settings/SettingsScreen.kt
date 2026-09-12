@@ -66,6 +66,7 @@ import com.gketch.forge.data.BackupStore
 import com.gketch.forge.data.HiddenFolder
 import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.ResumeBehavior
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
@@ -226,6 +227,28 @@ fun SettingsScreen(onBack: () -> Unit) {
                     subtitle = "Continue to the next item in queue or folder",
                     checked = app.autoplayNext,
                     onChecked = { scope.launch { appStore.setAutoplayNext(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                Text("Resume playback", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ResumeBehavior.entries.forEach { mode ->
+                        FilterChip(
+                            selected = app.resumeBehavior == mode,
+                            onClick = { scope.launch { appStore.setResumeBehavior(mode) } },
+                            label = { Text(mode.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "When reopening a video with a saved position (also next / previous / recent)",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
                 Text("Default playback speed", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)

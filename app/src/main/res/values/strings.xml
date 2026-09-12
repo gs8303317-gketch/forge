@@ -117,6 +117,9 @@
     <string name="aspect_mode_toast">%1$s</string>
     <string name="lock_controls">Lock controls</string>
     <string name="aspect_cycle">Aspect · %1$s</string>
+    <string name="orient_toggle">Orientation · %1$s</string>
+    <string name="resume_remember">Remember my choice</string>
+    <string name="resume_playback_title">Resume playback</string>
     <string name="unlock_controls">Unlock</string>
     <string name="stats_show">Stats overlay</string>
     <string name="stats_hide">Hide stats</string>

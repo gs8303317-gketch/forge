@@ -78,6 +78,8 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -166,6 +168,7 @@ import com.gketch.forge.playback.ForgeEngine
 import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
+import com.gketch.forge.data.ResumeBehavior
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.playback.ForgeAudioFx
@@ -222,6 +225,7 @@ private data class TrackChoice(
 fun PlayerScreen(
     queue: List<ForgeMediaItem>,
     startIndex: Int,
+    openId: Long = 0L,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -415,6 +419,9 @@ fun PlayerScreen(
     }
 
     val currentUriState = rememberUpdatedState(current?.uri?.toString())
+    val resumeBehaviorState = rememberUpdatedState(appSettings.resumeBehavior)
+    var rememberResumeChoice by remember { mutableStateOf(false) }
+    val resumeIgnoreUris = remember { mutableSetOf<String>() }
     DisposableEffect(controller) {
         val player = controller
         if (player == null) {
@@ -490,14 +497,23 @@ fun PlayerScreen(
                     }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                         if (uri != null) {
-                            scope.launch {
-                                val saved = resumeStore.getPosition(uri)
-                                if (saved >= ResumeStore.RESUME_PROMPT_MS) {
-                                    player.pause()
-                                    pendingResumeUri = uri
-                                    resumePromptMs = saved
-                                } else if (saved >= ResumeStore.MIN_SAVE_MS) {
-                                    player.seekTo(saved)
+                            // Load/reopen path may seekTo(index) and apply resume itself — skip duplicate.
+                            if (uri in resumeIgnoreUris) {
+                                resumeIgnoreUris.remove(uri)
+                            } else {
+                                scope.launch {
+                                    applyResumePolicy(
+                                        player = player,
+                                        uri = uri,
+                                        behavior = resumeBehaviorState.value,
+                                        resumeStore = resumeStore,
+                                        onPrompt = { saved ->
+                                            player.pause()
+                                            pendingResumeUri = uri
+                                            resumePromptMs = saved
+                                            rememberResumeChoice = false
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -589,16 +605,75 @@ fun PlayerScreen(
         index = startIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
     }
 
-    LaunchedEffect(controller, playQueue, startIndex) {
+    LaunchedEffect(controller, playQueue, startIndex, openId) {
         val player = controller ?: return@LaunchedEffect
-        val key = playQueue.joinToString("|") { it.uri.toString() } + "#$startIndex"
+        val key = playQueue.joinToString("|") { it.uri.toString() } + "#$startIndex#$openId"
         val playerUris = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
         val queueUris = playQueue.map { it.uri.toString() }
-        if (playerUris == queueUris) {
-            loadedKey = key
-            index = player.currentMediaItemIndex.coerceIn(0, (playQueue.size - 1).coerceAtLeast(0))
+        if (playQueue.isEmpty()) {
+            playerError = "Nothing to play"
             return@LaunchedEffect
         }
+        val safeStart = startIndex.coerceIn(0, (playQueue.size - 1).coerceAtLeast(0))
+        val startUri = playQueue.getOrNull(safeStart)?.uri?.toString()
+        ForgeEngine.setPauseAtEndOfMediaItems(!appSettings.autoplayNext)
+
+        // Same playlist already loaded: honor new openId / startIndex (reopen, recent, retarget)
+        // without rebuilding media items. Expand-mini-player keeps the same openId → no-op.
+        if (playerUris == queueUris && player.mediaItemCount > 0) {
+            if (loadedKey == key) {
+                index = player.currentMediaItemIndex.coerceIn(0, (playQueue.size - 1).coerceAtLeast(0))
+                return@LaunchedEffect
+            }
+            loadedKey = key
+            externalSubtitleUri = null
+            resumePromptMs = null
+            pendingResumeUri = null
+            rememberResumeChoice = false
+            playerError = null
+            errorRetryCount = 0
+            errorRetrying = false
+            index = safeStart
+            try {
+                if (startUri != null) resumeIgnoreUris.add(startUri)
+                if (player.currentMediaItemIndex != safeStart) {
+                    player.seekTo(safeStart, 0L)
+                } else {
+                    player.seekTo(0L)
+                }
+                player.setPlaybackSpeed(speed)
+                player.repeatMode = repeatMode
+                player.shuffleModeEnabled = shuffleOn
+                if (startUri != null) {
+                    // If transition already consumed the ignore entry, still apply here.
+                    resumeIgnoreUris.remove(startUri)
+                    applyResumePolicy(
+                        player = player,
+                        uri = startUri,
+                        behavior = appSettings.resumeBehavior,
+                        resumeStore = resumeStore,
+                        onPrompt = { saved ->
+                            player.pause()
+                            pendingResumeUri = startUri
+                            resumePromptMs = saved
+                            rememberResumeChoice = false
+                        },
+                    )
+                } else {
+                    player.play()
+                }
+            } catch (t: Throwable) {
+                if (startUri != null) resumeIgnoreUris.remove(startUri)
+                playerError = t.message ?: "Could not start playback"
+                return@LaunchedEffect
+            }
+            playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
+            if (startUri != null) {
+                runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: 1f }
+            }
+            return@LaunchedEffect
+        }
+
         val alreadySame = player.currentMediaItem?.mediaId == playQueue.getOrNull(startIndex)?.uri?.toString() &&
             player.mediaItemCount == playQueue.size
         if (alreadySame && loadedKey == key) return@LaunchedEffect
@@ -606,14 +681,10 @@ fun PlayerScreen(
         externalSubtitleUri = null
         resumePromptMs = null
         pendingResumeUri = null
+        rememberResumeChoice = false
         playerError = null
         errorRetryCount = 0
         errorRetrying = false
-
-        if (playQueue.isEmpty()) {
-            playerError = "Nothing to play"
-            return@LaunchedEffect
-        }
 
         val items = playQueue.mapNotNull { item ->
             val uri = item.uri
@@ -636,28 +707,35 @@ fun PlayerScreen(
             playerError = "Invalid media URI"
             return@LaunchedEffect
         }
-        val safeStart = startIndex.coerceIn(0, items.lastIndex)
-        val startUri = playQueue.getOrNull(safeStart)?.uri?.toString()
+        val startUri2 = playQueue.getOrNull(safeStart)?.uri?.toString()
             ?: items.getOrNull(safeStart)?.mediaId
         val resumeAt = try {
-            if (startUri != null) resumeStore.getPosition(startUri) else 0L
+            if (startUri2 != null) resumeStore.getPosition(startUri2) else 0L
         } catch (_: Exception) {
             0L
         }
-        val prompt = resumeAt >= ResumeStore.RESUME_PROMPT_MS
-        ForgeEngine.setPauseAtEndOfMediaItems(!appSettings.autoplayNext)
+        val behavior = appSettings.resumeBehavior
+        val shouldPrompt = resumeAt >= ResumeStore.RESUME_PROMPT_MS && behavior == ResumeBehavior.ASK
+        val startPosition = when {
+            resumeAt < ResumeStore.RESUME_PROMPT_MS &&
+                resumeAt >= ResumeStore.MIN_SAVE_MS &&
+                behavior != ResumeBehavior.ALWAYS_START_OVER -> resumeAt
+            behavior == ResumeBehavior.ALWAYS_CONTINUE && resumeAt >= ResumeStore.MIN_SAVE_MS -> resumeAt
+            else -> 0L
+        }
         try {
-            if (prompt) {
+            if (shouldPrompt) {
                 player.setMediaItems(items, safeStart, 0L)
                 player.prepare()
                 player.setPlaybackSpeed(speed)
                 player.repeatMode = repeatMode
                 player.shuffleModeEnabled = shuffleOn
                 player.pause()
-                pendingResumeUri = startUri
+                pendingResumeUri = startUri2
                 resumePromptMs = resumeAt
+                rememberResumeChoice = false
             } else {
-                player.setMediaItems(items, safeStart, resumeAt.coerceAtLeast(0L))
+                player.setMediaItems(items, safeStart, startPosition.coerceAtLeast(0L))
                 player.prepare()
                 player.setPlaybackSpeed(speed)
                 player.repeatMode = repeatMode
@@ -669,8 +747,8 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
         playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
-        if (startUri != null) {
-            runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: 1f }
+        if (startUri2 != null) {
+            runCatching { surfaceBrightness = brightnessStore.get(startUri2) ?: 1f }
         }
     }
 
@@ -1581,6 +1659,12 @@ fun PlayerScreen(
                 showFrameStep = !isPlaying && isVideoSurface && frameStepAvailable,
                 showAspect = isVideoSurface,
                 aspectLabel = aspect.label,
+                showOrientToggle = isVideoSurface,
+                orientLabel = when (orientationLock) {
+                    OrientationLock.PORTRAIT -> "Port"
+                    OrientationLock.LANDSCAPE -> "Land"
+                    OrientationLock.AUTO -> "Auto"
+                },
                 showChapters = chapters.isNotEmpty(),
                 onInteract = { controlsHideToken++ },
                 onCycleAspect = {
@@ -1591,6 +1675,15 @@ fun PlayerScreen(
                 },
                 onLongAspect = {
                     panel = if (panel == Panel.Aspect) Panel.None else Panel.Aspect
+                    controlsHideToken++
+                },
+                onToggleOrient = {
+                    orientationLock = if (orientationLock == OrientationLock.LANDSCAPE) {
+                        OrientationLock.PORTRAIT
+                    } else {
+                        OrientationLock.LANDSCAPE
+                    }
+                    Toast.makeText(context, orientationLock.label, Toast.LENGTH_SHORT).show()
                     controlsHideToken++
                 },
                 onQueue = {
@@ -2026,23 +2119,54 @@ fun PlayerScreen(
             AlertDialog(
                 onDismissRequest = { },
                 containerColor = ForgeGraphite,
-                title = { Text("Resume playback", color = Color.White) },
+                title = { Text(stringResource(R.string.resume_playback_title), color = Color.White) },
                 text = {
-                    Text(
-                        "Continue from ${formatDuration(saved)}?",
-                        color = ForgeMuted,
-                    )
+                    Column {
+                        Text(
+                            "Continue from ${formatDuration(saved)}?",
+                            color = ForgeMuted,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { rememberResumeChoice = !rememberResumeChoice }
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Checkbox(
+                                checked = rememberResumeChoice,
+                                onCheckedChange = { rememberResumeChoice = it },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = ForgeAccent,
+                                    uncheckedColor = ForgeMuted,
+                                    checkmarkColor = Color.Black,
+                                ),
+                            )
+                            Text(
+                                stringResource(R.string.resume_remember),
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             val player = controller
+                            if (rememberResumeChoice) {
+                                scope.launch {
+                                    appSettingsStore.setResumeBehavior(ResumeBehavior.ALWAYS_CONTINUE)
+                                }
+                            }
                             if (player != null) {
                                 player.seekTo(saved)
                                 player.play()
                             }
                             resumePromptMs = null
                             pendingResumeUri = null
+                            rememberResumeChoice = false
                         },
                     ) { Text("Continue", color = ForgeAccent) }
                 },
@@ -2051,6 +2175,11 @@ fun PlayerScreen(
                         onClick = {
                             val uri = pendingResumeUri
                             val player = controller
+                            if (rememberResumeChoice) {
+                                scope.launch {
+                                    appSettingsStore.setResumeBehavior(ResumeBehavior.ALWAYS_START_OVER)
+                                }
+                            }
                             if (uri != null) {
                                 scope.launch { resumeStore.clear(uri) }
                             }
@@ -2058,6 +2187,7 @@ fun PlayerScreen(
                             player?.play()
                             resumePromptMs = null
                             pendingResumeUri = null
+                            rememberResumeChoice = false
                         },
                     ) { Text("Start over", color = Color.White) }
                 },
@@ -2434,11 +2564,14 @@ private fun PlayerControls(
     showFrameStep: Boolean = false,
     showAspect: Boolean = false,
     aspectLabel: String = "Fit",
+    showOrientToggle: Boolean = false,
+    orientLabel: String = "Auto",
     showChapters: Boolean = false,
     onInteract: () -> Unit = {},
     onFrameStep: (forward: Boolean) -> Unit = {},
     onCycleAspect: () -> Unit = {},
     onLongAspect: () -> Unit = {},
+    onToggleOrient: () -> Unit = {},
     onQueue: () -> Unit = {},
     onChapterPrev: () -> Unit = {},
     onChapterNext: () -> Unit = {},
@@ -2558,6 +2691,27 @@ private fun PlayerControls(
                     )
                     Text(
                         text = aspectLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            if (showOrientToggle) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onToggleOrient)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.ScreenRotation,
+                        contentDescription = stringResource(R.string.orient_toggle, orientLabel),
+                        tint = if (orientLabel == "Auto") Color.White else ForgeAccent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = orientLabel,
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                     )
@@ -3103,6 +3257,42 @@ private fun collectTrackDetailLabels(tracks: Tracks, type: @C.TrackType Int): Li
         }
     }
     return out
+}
+
+
+/** Apply saved-position policy for an already-prepared current item. */
+private suspend fun applyResumePolicy(
+    player: Player,
+    uri: String,
+    behavior: ResumeBehavior,
+    resumeStore: ResumeStore,
+    onPrompt: (Long) -> Unit,
+) {
+    val saved = try {
+        resumeStore.getPosition(uri)
+    } catch (_: Exception) {
+        0L
+    }
+    when (behavior) {
+        ResumeBehavior.ALWAYS_START_OVER -> {
+            player.seekTo(0L)
+            player.play()
+        }
+        ResumeBehavior.ALWAYS_CONTINUE -> {
+            if (saved >= ResumeStore.MIN_SAVE_MS) player.seekTo(saved)
+            player.play()
+        }
+        ResumeBehavior.ASK -> {
+            when {
+                saved >= ResumeStore.RESUME_PROMPT_MS -> onPrompt(saved)
+                saved >= ResumeStore.MIN_SAVE_MS -> {
+                    player.seekTo(saved)
+                    player.play()
+                }
+                else -> player.play()
+            }
+        }
+    }
 }
 
 private fun collectTracks(tracks: Tracks, type: @C.TrackType Int): List<TrackChoice> {

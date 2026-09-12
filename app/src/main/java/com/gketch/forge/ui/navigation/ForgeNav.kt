@@ -49,6 +49,8 @@ object Routes {
 data class PlaybackSession(
     val queue: List<ForgeMediaItem>,
     val startIndex: Int,
+    /** Bumps on every openQueue so reopen/recent re-applies resume Ask policy. */
+    val openId: Long = System.currentTimeMillis(),
 )
 
 @Composable
@@ -214,6 +216,7 @@ fun ForgeNav(
                 PlayerScreen(
                     queue = current.queue,
                     startIndex = current.startIndex,
+                    openId = current.openId,
                     onBack = { navController.popBackStack() },
                 )
             }

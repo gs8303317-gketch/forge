@@ -81,6 +81,13 @@ enum class CrossfadeDuration(val label: String, val seconds: Int) {
     SEC_3("3s", 3),
 }
 
+
+enum class ResumeBehavior(val label: String) {
+    ASK("Ask every time"),
+    ALWAYS_CONTINUE("Always continue"),
+    ALWAYS_START_OVER("Always start over"),
+}
+
 enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
     SEC_3("3s", 3_000L),
     SEC_5_5("5.5s", 5_500L),
@@ -113,6 +120,7 @@ data class AppSettings(
     val crossfade: CrossfadeDuration = CrossfadeDuration.OFF,
     val loudnessNormalize: Boolean = false,
     val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_5_5,
+    val resumeBehavior: ResumeBehavior = ResumeBehavior.ASK,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -138,6 +146,7 @@ data class AppSettings(
         .put("crossfade", crossfade.name)
         .put("loudnessNormalize", loudnessNormalize)
         .put("chromeHideDelay", chromeHideDelay.name)
+        .put("resumeBehavior", resumeBehavior.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -211,6 +220,9 @@ class AppSettingsStore(context: Context) {
                 if (p[KEY_CONTROLS_AUTO_HIDE] == false) ChromeHideDelay.NEVER
                 else ChromeHideDelay.SEC_5_5
             },
+            resumeBehavior = runCatching {
+                ResumeBehavior.valueOf(p[KEY_RESUME_BEHAVIOR] ?: ResumeBehavior.ASK.name)
+            }.getOrDefault(ResumeBehavior.ASK),
         )
     }
 
@@ -319,6 +331,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_CHROME_HIDE_DELAY] = value.name }
     }
 
+    suspend fun setResumeBehavior(value: ResumeBehavior) {
+        store.edit { it[KEY_RESUME_BEHAVIOR] = value.name }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -352,6 +368,7 @@ class AppSettingsStore(context: Context) {
                     ChromeHideDelay.NEVER.name
                 }
             }
+            if (o.has("resumeBehavior")) p[KEY_RESUME_BEHAVIOR] = o.optString("resumeBehavior")
         }
     }
 
@@ -380,6 +397,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_LOUDNESS_NORM = booleanPreferencesKey("loudness_normalize")
         private val KEY_CONTROLS_AUTO_HIDE = booleanPreferencesKey("controls_auto_hide") // legacy migrate
         private val KEY_CHROME_HIDE_DELAY = stringPreferencesKey("chrome_hide_delay")
+        private val KEY_RESUME_BEHAVIOR = stringPreferencesKey("resume_behavior")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

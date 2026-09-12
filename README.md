@@ -80,6 +80,15 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Quick Settings play/pause tile for the current session
 - Gesture sensitivity setting (low / normal / high)
 
+- Video color adjust (brightness / contrast / saturation via TextureView ColorMatrix)
+- Audio L/R balance control
+- Watched / unwatched mark + filter; auto-mark near end of playback
+- Exclude short clips setting (off / 15 / 30 / 60 seconds)
+- Stream options: custom User-Agent + network timeout
+- Open shared / VIEW text URLs; clipboard paste helper on stream dialog
+- Random (shuffle) play all items in current folder
+- Hindi UI strings (`values-hi`) + in-app language toggle (System / English / Hindi)
+
 ## Build
 
 ```bash
@@ -97,4 +106,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.12.0 (13)
+- **version:** 1.13.0 (14)

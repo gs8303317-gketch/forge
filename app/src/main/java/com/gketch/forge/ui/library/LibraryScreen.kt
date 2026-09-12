@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
+import android.content.ClipboardManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -62,6 +63,9 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -109,6 +113,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,6 +126,10 @@ import com.gketch.forge.data.LibrarySort
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.SavedStream
+import com.gketch.forge.R
+import com.gketch.forge.MainActivity
+import com.gketch.forge.data.WatchedFilter
+import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.data.forgeItemFromUri
 import com.gketch.forge.data.isPlayableStreamUrl
 import com.gketch.forge.ui.permissions.hasMediaPermission
@@ -259,10 +268,10 @@ fun LibraryScreen(
                 MiniPlayerBar(onExpand = onExpandPlayer)
                 NavigationBar(containerColor = ForgeGraphite) {
                     val items = listOf(
-                        Triple(LibraryTab.VIDEO, Icons.Rounded.Movie, "Video"),
-                        Triple(LibraryTab.AUDIO, Icons.Rounded.AudioFile, "Audio"),
-                        Triple(LibraryTab.PLAYLISTS, Icons.Rounded.QueueMusic, "Playlists"),
-                        Triple(LibraryTab.BROWSE, Icons.Rounded.Folder, "Browse"),
+                        Triple(LibraryTab.VIDEO, Icons.Rounded.Movie, stringResource(R.string.nav_video)),
+                        Triple(LibraryTab.AUDIO, Icons.Rounded.AudioFile, stringResource(R.string.nav_audio)),
+                        Triple(LibraryTab.PLAYLISTS, Icons.Rounded.QueueMusic, stringResource(R.string.nav_playlists)),
+                        Triple(LibraryTab.BROWSE, Icons.Rounded.Folder, stringResource(R.string.nav_browse)),
                     )
                     items.forEach { (tab, icon, label) ->
                         NavigationBarItem(
@@ -429,7 +438,7 @@ fun LibraryScreen(
                             }
                         }
                         IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = ForgeMuted)
+                            Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings), tint = ForgeMuted)
                         }
                     }
                 }
@@ -441,8 +450,8 @@ fun LibraryScreen(
                     singleLine = true,
                     placeholder = {
                         Text(
-                            if (state.selectedFolder != null) "Search in folder…"
-                            else "Search media…",
+                            if (state.selectedFolder != null) stringResource(R.string.search_folder_hint)
+                            else stringResource(R.string.search_hint),
                         )
                     },
                     leadingIcon = {
@@ -451,6 +460,32 @@ fun LibraryScreen(
                     shape = RoundedCornerShape(14.dp),
                     colors = fieldColors(),
                 )
+                if (state.tab == LibraryTab.VIDEO || state.tab == LibraryTab.AUDIO ||
+                    (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        WatchedFilter.entries.forEach { wf ->
+                            FilterChip(
+                                selected = state.watchedFilter == wf,
+                                onClick = { viewModel.setWatchedFilter(wf) },
+                                label = {
+                                    Text(
+                                        when (wf) {
+                                            WatchedFilter.ALL -> stringResource(R.string.all)
+                                            WatchedFilter.WATCHED -> stringResource(R.string.watched)
+                                            WatchedFilter.UNWATCHED -> stringResource(R.string.unwatched)
+                                        },
+                                    )
+                                },
+                                colors = filterColors(),
+                            )
+                        }
+                    }
+                }
                 if (!permitted) {
                     Spacer(Modifier.height(6.dp))
                     TextButton(onClick = onRequestPermission) {
@@ -475,6 +510,7 @@ fun LibraryScreen(
                 onRemoveRecent = viewModel::removeRecent,
                 onRemoveContinue = viewModel::removeContinueWatching,
                 onDeleteMedia = { deleteCandidate = it },
+                onToggleWatched = viewModel::toggleWatched,
             )
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
@@ -495,6 +531,7 @@ fun LibraryScreen(
                 onToggleSelect = viewModel::toggleSelected,
                 onBeginSelect = viewModel::beginSelection,
                 onDeleteMedia = { deleteCandidate = it },
+                onToggleWatched = viewModel::toggleWatched,
             )
             LibraryTab.PLAYLISTS -> PlaylistsBody(
                 state = state,
@@ -753,6 +790,7 @@ private fun LibraryBody(
     onRemoveRecent: (ForgeMediaItem) -> Unit,
     onRemoveContinue: (ForgeMediaItem) -> Unit,
     onDeleteMedia: (ForgeMediaItem) -> Unit = {},
+    onToggleWatched: (ForgeMediaItem) -> Unit = {},
 ) {
     val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
@@ -818,6 +856,7 @@ private fun LibraryBody(
                     MediaGridCard(
                         item = item,
                         favorite = state.favoriteUris.contains(item.uri.toString()),
+                        watched = WatchedStore.keyFor(item.uri.toString()) in state.watchedKeys,
                         selected = item.stableKey() in state.selectedKeys,
                         selecting = state.selecting,
                         onClick = {
@@ -827,6 +866,7 @@ private fun LibraryBody(
                         onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
+                        onToggleWatched = { onToggleWatched(item) },
                         onDelete = { onDeleteMedia(item) },
                     )
                 }
@@ -870,6 +910,7 @@ private fun LibraryBody(
                     MediaRow(
                         item = item,
                         favorite = state.favoriteUris.contains(item.uri.toString()),
+                        watched = WatchedStore.keyFor(item.uri.toString()) in state.watchedKeys,
                         selected = item.stableKey() in state.selectedKeys,
                         selecting = state.selecting,
                         onClick = {
@@ -879,6 +920,7 @@ private fun LibraryBody(
                         onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
+                        onToggleWatched = { onToggleWatched(item) },
                         onDelete = { onDeleteMedia(item) },
                     )
                 }
@@ -907,6 +949,7 @@ private fun FoldersBody(
     onToggleSelect: (ForgeMediaItem) -> Unit,
     onBeginSelect: (ForgeMediaItem) -> Unit,
     onDeleteMedia: (ForgeMediaItem) -> Unit = {},
+    onToggleWatched: (ForgeMediaItem) -> Unit = {},
 ) {
     val folder = state.selectedFolder
     if (folder == null) {
@@ -928,18 +971,18 @@ private fun FoldersBody(
                     TextButton(onClick = onAddSafFolder) {
                         Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Add folder", color = ForgeAccent)
+                        Text(stringResource(R.string.add_folder), color = ForgeAccent)
                     }
                     TextButton(onClick = onAddStream) {
                         Icon(Icons.Rounded.Link, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Add stream", color = ForgeAccent)
+                        Text(stringResource(R.string.add_stream), color = ForgeAccent)
                     }
                 }
             }
             if (streams.isNotEmpty()) {
                 item(key = "streams-label") {
-                    Text("Streams", color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.streams), color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
                 }
                 items(streams, key = { it.id }) { stream ->
                     SavedStreamRow(
@@ -951,7 +994,7 @@ private fun FoldersBody(
                 }
             }
             item(key = "folders-label") {
-                Text("Folders", color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.folders), color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
             }
             if (folders.isEmpty()) {
                 item(key = "folders-empty") {
@@ -989,10 +1032,18 @@ private fun FoldersBody(
                     )
                 }
                 IconButton(
+                    onClick = {
+                        if (state.folderItems.isNotEmpty()) onPlay(state.folderItems.shuffled(), 0)
+                    },
+                    enabled = state.folderItems.isNotEmpty(),
+                ) {
+                    Icon(Icons.Rounded.Shuffle, contentDescription = stringResource(R.string.random_play_folder), tint = ForgeAccent)
+                }
+                IconButton(
                     onClick = { if (state.folderItems.isNotEmpty()) onPlay(state.folderItems, 0) },
                     enabled = state.folderItems.isNotEmpty(),
                 ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Play folder", tint = ForgeAccent)
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play_folder), tint = ForgeAccent)
                 }
             }
             if (state.layout == LibraryLayout.LIST) {
@@ -1006,6 +1057,7 @@ private fun FoldersBody(
                         MediaRow(
                             item = item,
                             favorite = state.favoriteUris.contains(item.uri.toString()),
+                            watched = WatchedStore.keyFor(item.uri.toString()) in state.watchedKeys,
                             selected = item.stableKey() in state.selectedKeys,
                             selecting = state.selecting,
                             onClick = {
@@ -1015,6 +1067,7 @@ private fun FoldersBody(
                             onLongClick = { onBeginSelect(item) },
                             onToggleFavorite = { onToggleFavorite(item) },
                             onAddToPlaylist = { onAddToPlaylist(item) },
+                            onToggleWatched = { onToggleWatched(item) },
                             onDelete = { onDeleteMedia(item) },
                         )
                     }
@@ -1032,6 +1085,7 @@ private fun FoldersBody(
                         MediaGridCard(
                             item = item,
                             favorite = state.favoriteUris.contains(item.uri.toString()),
+                            watched = WatchedStore.keyFor(item.uri.toString()) in state.watchedKeys,
                             selected = item.stableKey() in state.selectedKeys,
                             selecting = state.selecting,
                             onClick = {
@@ -1041,6 +1095,7 @@ private fun FoldersBody(
                             onLongClick = { onBeginSelect(item) },
                             onToggleFavorite = { onToggleFavorite(item) },
                             onAddToPlaylist = { onAddToPlaylist(item) },
+                            onToggleWatched = { onToggleWatched(item) },
                             onDelete = { onDeleteMedia(item) },
                         )
                     }
@@ -1350,12 +1405,14 @@ private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
 private fun MediaGridCard(
     item: ForgeMediaItem,
     favorite: Boolean,
+    watched: Boolean = false,
     selected: Boolean = false,
     selecting: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onToggleWatched: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -1382,6 +1439,14 @@ private fun MediaGridCard(
                     modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp),
                 )
             }
+            if (watched) {
+                Icon(
+                    Icons.Rounded.Visibility,
+                    contentDescription = null,
+                    tint = ForgeAccent,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(18.dp),
+                )
+            }
             IconButton(
                 onClick = onToggleFavorite,
                 modifier = Modifier.align(Alignment.TopEnd).size(32.dp),
@@ -1402,6 +1467,18 @@ private fun MediaGridCard(
                     text = { Text("Add to playlist", color = Color.White) },
                     onClick = { menu = false; onAddToPlaylist() },
                 )
+                if (onToggleWatched != null) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (watched) stringResource(R.string.mark_unwatched)
+                                else stringResource(R.string.mark_watched),
+                                color = Color.White,
+                            )
+                        },
+                        onClick = { menu = false; onToggleWatched() },
+                    )
+                }
                 if (onDelete != null) {
                     DropdownMenuItem(
                         text = { Text("Delete from device", color = Color.White) },
@@ -1432,12 +1509,14 @@ private fun MediaGridCard(
 private fun MediaRow(
     item: ForgeMediaItem,
     favorite: Boolean,
+    watched: Boolean = false,
     selected: Boolean = false,
     selecting: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onToggleWatched: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
 ) {
@@ -1457,7 +1536,17 @@ private fun MediaRow(
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ThumbBox(item = item, modifier = Modifier.size(64.dp))
+        Box {
+            ThumbBox(item = item, modifier = Modifier.size(64.dp))
+            if (watched) {
+                Icon(
+                    Icons.Rounded.Visibility,
+                    contentDescription = null,
+                    tint = ForgeAccent,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).size(14.dp),
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -1486,6 +1575,18 @@ private fun MediaRow(
                 text = { Text("Add to playlist", color = Color.White) },
                 onClick = { menu = false; onAddToPlaylist() },
             )
+            if (onToggleWatched != null) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (watched) stringResource(R.string.mark_unwatched)
+                            else stringResource(R.string.mark_watched),
+                            color = Color.White,
+                        )
+                    },
+                    onClick = { menu = false; onToggleWatched() },
+                )
+            }
             if (onRemove != null) {
                 DropdownMenuItem(
                     text = { Text("Remove from playlist", color = Color.White) },
@@ -1620,6 +1721,7 @@ private fun StreamDialog(
     onOpen: (url: String, name: String?, save: Boolean) -> Unit,
     onSaveOnly: (url: String, name: String?) -> Unit,
 ) {
+    val context = LocalContext.current
     var url by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var saveToo by remember { mutableStateOf(true) }
@@ -1627,7 +1729,7 @@ private fun StreamDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ForgeGraphite,
-        title = { Text("Network stream", color = MaterialTheme.colorScheme.onBackground) },
+        title = { Text(stringResource(R.string.network_stream), color = MaterialTheme.colorScheme.onBackground) },
         text = {
             Column {
                 Text("Paste an http(s) or rtsp URL. Optionally save it for quick access.", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
@@ -1641,6 +1743,20 @@ private fun StreamDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                     colors = fieldColors(),
                 )
+                TextButton(
+                    onClick = {
+                        val cm = context.getSystemService(ClipboardManager::class.java)
+                        val raw = cm?.primaryClip?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                        val found = MainActivity.findPlayableUrl(raw)
+                        if (found != null) url = found
+                        else if (raw.isNotBlank()) url = raw.trim()
+                    },
+                ) {
+                    Icon(Icons.Rounded.ContentPaste, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.paste_clipboard), color = ForgeAccent)
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name,

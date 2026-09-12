@@ -21,6 +21,9 @@ import com.gketch.forge.data.PlaylistStore
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ContinueWatchItem
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.data.WatchedStore
+import com.gketch.forge.data.WatchedFilter
+import com.gketch.forge.data.MinClipLength
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
 import com.gketch.forge.data.SafMediaScanner
@@ -64,6 +67,9 @@ data class LibraryUiState(
     val error: String? = null,
     val selecting: Boolean = false,
     val selectedKeys: Set<String> = emptySet(),
+    val watchedKeys: Set<String> = emptySet(),
+    val watchedFilter: WatchedFilter = WatchedFilter.ALL,
+    val minClipSeconds: Int = 0,
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -77,16 +83,33 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val hiddenStore = HiddenFoldersStore(application)
     private val safStore = SafFoldersStore(application)
     private val safScanner = SafMediaScanner(application)
+    private val watchedStore = WatchedStore(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
     private val listAnchors = mutableMapOf<String, ScrollAnchor>()
     private val gridAnchors = mutableMapOf<String, ScrollAnchor>()
 
-    private fun filterFolderItems(all: List<ForgeMediaItem>, query: String): List<ForgeMediaItem> {
+    private fun filterFolderItems(
+        all: List<ForgeMediaItem>,
+        query: String,
+        watchedKeys: Set<String> = _state.value.watchedKeys,
+        watchedFilter: WatchedFilter = _state.value.watchedFilter,
+        minClipSeconds: Int = _state.value.minClipSeconds,
+    ): List<ForgeMediaItem> {
         val q = query.trim()
-        if (q.isEmpty()) return all
-        return all.filter { it.title.contains(q, ignoreCase = true) }
+        var list = all
+        if (minClipSeconds > 0) {
+            val minMs = minClipSeconds * 1000L
+            list = list.filter { !it.isVideo || it.durationMs <= 0L || it.durationMs >= minMs }
+        }
+        list = when (watchedFilter) {
+            WatchedFilter.ALL -> list
+            WatchedFilter.WATCHED -> list.filter { watchedStore.isWatched(watchedKeys, it.uri.toString()) }
+            WatchedFilter.UNWATCHED -> list.filter { !watchedStore.isWatched(watchedKeys, it.uri.toString()) }
+        }
+        if (q.isEmpty()) return list
+        return list.filter { it.title.contains(q, ignoreCase = true) }
     }
 
     fun listAnchor(key: String): ScrollAnchor = listAnchors[key] ?: ScrollAnchor()
@@ -167,7 +190,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         sort = prefs.librarySort,
                         tab = tab,
                         filter = filter,
-                        filtered = applyFilterAndSort(it.items, filter, prefs.librarySort),
+                        minClipSeconds = prefs.minClipLength.seconds,
+                        filtered = applyFilterAndSort(
+                            it.items, filter, prefs.librarySort,
+                            it.watchedKeys, it.watchedFilter, prefs.minClipLength.seconds,
+                        ),
+                        folderItems = filterFolderItems(
+                            it.folderItemsAll, it.query,
+                            it.watchedKeys, it.watchedFilter, prefs.minClipLength.seconds,
+                        ),
                     )
                 }
             }
@@ -187,6 +218,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             safStore.folders.collect { list ->
                 _state.update { it.copy(safFolders = list) }
                 refresh()
+            }
+        }
+        viewModelScope.launch {
+            watchedStore.watchedKeys.collect { keys ->
+                _state.update { st ->
+                    st.copy(
+                        watchedKeys = keys,
+                        filtered = applyFilterAndSort(
+                            st.items, st.filter, st.sort, keys, st.watchedFilter, st.minClipSeconds,
+                        ),
+                        folderItems = filterFolderItems(st.folderItemsAll, st.query, keys, st.watchedFilter, st.minClipSeconds),
+                    )
+                }
             }
         }
     }
@@ -579,15 +623,45 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setWatchedFilter(filter: WatchedFilter) {
+        _state.update { st ->
+            st.copy(
+                watchedFilter = filter,
+                filtered = applyFilterAndSort(st.items, st.filter, st.sort, st.watchedKeys, filter, st.minClipSeconds),
+                folderItems = filterFolderItems(st.folderItemsAll, st.query, st.watchedKeys, filter, st.minClipSeconds),
+            )
+        }
+    }
+
+    fun toggleWatched(item: ForgeMediaItem) {
+        viewModelScope.launch { watchedStore.toggle(item.uri.toString()) }
+    }
+
+    fun markWatched(uri: String) {
+        viewModelScope.launch { watchedStore.markWatched(uri) }
+    }
+
     private fun applyFilterAndSort(
         items: List<ForgeMediaItem>,
         filter: LibraryFilter,
         sort: LibrarySort,
+        watchedKeys: Set<String> = _state.value.watchedKeys,
+        watchedFilter: WatchedFilter = _state.value.watchedFilter,
+        minClipSeconds: Int = _state.value.minClipSeconds,
     ): List<ForgeMediaItem> {
-        val filtered = when (filter) {
+        var filtered = when (filter) {
             LibraryFilter.ALL -> items
             LibraryFilter.VIDEO -> items.filter { it.kind == MediaKind.VIDEO }
             LibraryFilter.AUDIO -> items.filter { it.kind == MediaKind.AUDIO }
+        }
+        if (minClipSeconds > 0) {
+            val minMs = minClipSeconds * 1000L
+            filtered = filtered.filter { !it.isVideo || it.durationMs <= 0L || it.durationMs >= minMs }
+        }
+        filtered = when (watchedFilter) {
+            WatchedFilter.ALL -> filtered
+            WatchedFilter.WATCHED -> filtered.filter { watchedStore.isWatched(watchedKeys, it.uri.toString()) }
+            WatchedFilter.UNWATCHED -> filtered.filter { !watchedStore.isWatched(watchedKeys, it.uri.toString()) }
         }
         return when (sort) {
             LibrarySort.NAME -> filtered.sortedBy { it.title.lowercase() }

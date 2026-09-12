@@ -63,6 +63,8 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.SurroundSound
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Loop
@@ -152,7 +154,10 @@ import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.playback.ForgeAudioFx
+import com.gketch.forge.playback.ForgeBalance
+import com.gketch.forge.playback.ForgeVideoColor
 import com.gketch.forge.playback.ForgeEqualizer
 import androidx.media3.extractor.metadata.id3.ChapterFrame
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
@@ -175,7 +180,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance }
 
 private data class MediaChapter(val title: String, val startMs: Long)
 
@@ -204,6 +209,7 @@ fun PlayerScreen(
     val resumeStore = remember { ResumeStore(context) }
     val recentStore = remember { RecentStore(context) }
     val brightnessStore = remember { BrightnessStore(context) }
+    val watchedStore = remember { WatchedStore(context) }
     val appSettingsStore = remember { AppSettingsStore(context) }
     val controller = rememberPlayerController()
 
@@ -267,6 +273,11 @@ fun PlayerScreen(
     var chapters by remember { mutableStateOf<List<MediaChapter>>(emptyList()) }
     var bassOn by remember { mutableStateOf(ForgeAudioFx.bassEnabled) }
     var virtOn by remember { mutableStateOf(ForgeAudioFx.virtualizerEnabled) }
+    var videoBrightness by remember { mutableFloatStateOf(ForgeVideoColor.current.brightness) }
+    var videoContrast by remember { mutableFloatStateOf(ForgeVideoColor.current.contrast) }
+    var videoSaturation by remember { mutableFloatStateOf(ForgeVideoColor.current.saturation) }
+    var audioBalance by remember { mutableIntStateOf(ForgeBalance.balance) }
+    var autoMarkedUri by remember { mutableStateOf<String?>(null) }
     var sleepBaseVolume by remember { mutableFloatStateOf(1f) }
     var playAsAudio by remember { mutableStateOf(false) }
     var frameStepAvailable by remember { mutableStateOf(true) }
@@ -389,6 +400,7 @@ fun PlayerScreen(
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    autoMarkedUri = null
                     playerError = null
                     abPointA = null
                     abPointB = null
@@ -615,6 +627,15 @@ fun PlayerScreen(
                     player.seekTo(a)
                     positionMs = a
                 }
+                val uri = player.currentMediaItem?.mediaId
+                    ?: player.currentMediaItem?.localConfiguration?.uri?.toString()
+                if (uri != null && durationMs > 0L &&
+                    positionMs >= durationMs - WatchedStore.AUTO_MARK_NEAR_END_MS &&
+                    autoMarkedUri != uri
+                ) {
+                    autoMarkedUri = uri
+                    watchedStore.markWatched(uri)
+                }
             }
             delay(100)
         }
@@ -769,7 +790,10 @@ fun PlayerScreen(
                 if (isVideoSurface) {
                     AndroidView(
                         factory = { ctx ->
-                            PlayerView(ctx).apply {
+                            val pv = android.view.LayoutInflater.from(ctx)
+                                .inflate(com.gketch.forge.R.layout.forge_player_view, null, false)
+                                as PlayerView
+                            pv.apply {
                                 useController = false
                                 resizeMode = aspect.resizeMode
                                 this.player = controller
@@ -777,6 +801,7 @@ fun PlayerScreen(
                                 subtitleView?.visibility =
                                     if (subtitleDelayMs != 0) android.view.View.INVISIBLE
                                     else android.view.View.VISIBLE
+                                ForgeVideoColor.applyTo(this)
                             }
                         },
                         update = {
@@ -786,6 +811,7 @@ fun PlayerScreen(
                             it.subtitleView?.visibility =
                                 if (subtitleDelayMs != 0) android.view.View.INVISIBLE
                                 else android.view.View.VISIBLE
+                            ForgeVideoColor.applyTo(it)
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -1015,6 +1041,14 @@ fun PlayerScreen(
                 onJumpToTime = {
                     moreMenu = false
                     panel = Panel.JumpToTime
+                },
+                onVideoColor = {
+                    moreMenu = false
+                    panel = Panel.VideoColor
+                },
+                onAudioBalance = {
+                    moreMenu = false
+                    panel = Panel.AudioBalance
                 },
                 onPlayAsAudio = {
                     moreMenu = false
@@ -1292,6 +1326,49 @@ fun PlayerScreen(
                 },
             )
         }
+
+        if (panel == Panel.VideoColor && showChrome) {
+            VideoColorDialog(
+                brightness = videoBrightness,
+                contrast = videoContrast,
+                saturation = videoSaturation,
+                onDismiss = { panel = Panel.None },
+                onBrightness = {
+                    videoBrightness = it
+                    ForgeVideoColor.set(videoBrightness, videoContrast, videoSaturation)
+                    ForgeVideoColor.applyTo(playerViewRef)
+                },
+                onContrast = {
+                    videoContrast = it
+                    ForgeVideoColor.set(videoBrightness, videoContrast, videoSaturation)
+                    ForgeVideoColor.applyTo(playerViewRef)
+                },
+                onSaturation = {
+                    videoSaturation = it
+                    ForgeVideoColor.set(videoBrightness, videoContrast, videoSaturation)
+                    ForgeVideoColor.applyTo(playerViewRef)
+                },
+                onReset = {
+                    videoBrightness = 0f
+                    videoContrast = 1f
+                    videoSaturation = 1f
+                    ForgeVideoColor.reset()
+                    ForgeVideoColor.applyTo(playerViewRef)
+                },
+            )
+        }
+
+        if (panel == Panel.AudioBalance && showChrome) {
+            AudioBalanceDialog(
+                balance = audioBalance,
+                onDismiss = { panel = Panel.None },
+                onChange = {
+                    audioBalance = it
+                    ForgeBalance.setBalance(it)
+                },
+            )
+        }
+
 
         if (panel == Panel.Chapters && showChrome) {
             ChaptersDialog(
@@ -1583,6 +1660,8 @@ private fun PlayerTopBar(
     onChapters: () -> Unit,
     showChapters: Boolean,
     onJumpToTime: () -> Unit,
+    onVideoColor: () -> Unit,
+    onAudioBalance: () -> Unit,
     onPlayAsAudio: () -> Unit,
     playAsAudio: Boolean,
     showPlayAsAudio: Boolean,
@@ -1780,6 +1859,20 @@ private fun PlayerTopBar(
                     onClick = onJumpToTime,
                     leadingIcon = {
                         Icon(Icons.Rounded.Schedule, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Video color", color = Color.White) },
+                    onClick = onVideoColor,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Palette, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Audio balance", color = Color.White) },
+                    onClick = onAudioBalance,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.SurroundSound, null, tint = ForgeAccent)
                     },
                 )
                 if (showPlayAsAudio) {

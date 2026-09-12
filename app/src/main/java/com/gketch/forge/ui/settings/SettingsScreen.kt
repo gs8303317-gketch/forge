@@ -26,6 +26,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -41,12 +43,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.gketch.forge.BuildConfig
+import com.gketch.forge.R
 import com.gketch.forge.data.AccentPreset
 import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.GestureSensitivity
+import com.gketch.forge.data.MinClipLength
 import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.BackupStore
 import com.gketch.forge.data.HiddenFolder
@@ -156,7 +162,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
             Text(
-                text = "Settings",
+                text = stringResource(R.string.settings),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground,
             )
@@ -233,6 +239,93 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.exclude_short_clips), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MinClipLength.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.minClipLength == opt,
+                            onClick = { scope.launch { appStore.setMinClipLength(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.exclude_short_clips_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.stream_options)) {
+                Text(stringResource(R.string.stream_user_agent), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                var uaDraft by remember(app.streamUserAgent) { mutableStateOf(app.streamUserAgent) }
+                OutlinedTextField(
+                    value = uaDraft,
+                    onValueChange = { uaDraft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.stream_user_agent_hint)) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ForgeAccent,
+                        unfocusedBorderColor = ForgeMuted.copy(alpha = 0.4f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        cursorColor = ForgeAccent,
+                        focusedContainerColor = ForgeBlack,
+                        unfocusedContainerColor = ForgeBlack,
+                    ),
+                )
+                TextButton(
+                    onClick = { scope.launch { appStore.setStreamUserAgent(uaDraft) } },
+                ) { Text(stringResource(R.string.action_save), color = ForgeAccent) }
+                Spacer(Modifier.height(10.dp))
+                Text(stringResource(R.string.stream_timeout), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppSettingsStore.TIMEOUT_OPTIONS.forEach { sec ->
+                        FilterChip(
+                            selected = app.streamTimeoutSec == sec,
+                            onClick = { scope.launch { appStore.setStreamTimeoutSec(sec) } },
+                            label = { Text("${sec}s") },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.stream_timeout_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.language)) {
+                Text(stringResource(R.string.language_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppLanguage.entries.forEach { lang ->
+                        FilterChip(
+                            selected = app.appLanguage == lang,
+                            onClick = { scope.launch { appStore.setAppLanguage(lang) } },
+                            label = { Text(lang.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
             }
 
             SettingsCard(title = "Playback engine") {
@@ -485,7 +578,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Multi-select · hide folders · SAF folders · themes · backup · sleep fade · mini player · chapters · bass / virtualizer",
+                    text = "1.13 · video color · audio balance · watched · short-clip filter · stream UA/timeout · shuffle folder · Hindi",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

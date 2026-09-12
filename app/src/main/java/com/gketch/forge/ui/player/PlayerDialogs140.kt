@@ -470,3 +470,136 @@ fun JumpToTimeDialog(
         },
     )
 }
+
+@Composable
+fun VideoColorDialog(
+    brightness: Float,
+    contrast: Float,
+    saturation: Float,
+    onDismiss: () -> Unit,
+    onBrightness: (Float) -> Unit,
+    onContrast: (Float) -> Unit,
+    onSaturation: (Float) -> Unit,
+    onReset: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Video color", color = Color.White) },
+        text = {
+            Column {
+                Text("Brightness", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Text(String.format(Locale.US, "%+.2f", brightness), color = ForgeAccent)
+                Slider(
+                    value = brightness,
+                    onValueChange = onBrightness,
+                    valueRange = -1f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ForgeAccent,
+                        activeTrackColor = ForgeAccent,
+                        inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
+                    ),
+                )
+                Text("Contrast", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Text(String.format(Locale.US, "%.2f", contrast), color = ForgeAccent)
+                Slider(
+                    value = contrast,
+                    onValueChange = onContrast,
+                    valueRange = 0.5f..2f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ForgeAccent,
+                        activeTrackColor = ForgeAccent,
+                        inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
+                    ),
+                )
+                Text("Saturation", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Text(String.format(Locale.US, "%.2f", saturation), color = ForgeAccent)
+                Slider(
+                    value = saturation,
+                    onValueChange = onSaturation,
+                    valueRange = 0f..2f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ForgeAccent,
+                        activeTrackColor = ForgeAccent,
+                        inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
+                    ),
+                )
+                TextButton(onClick = onReset) { Text("Reset", color = ForgeMuted) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}
+
+@Composable
+fun AudioBalanceDialog(
+    balance: Int,
+    onDismiss: () -> Unit,
+    onChange: (Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Audio balance", color = Color.White) },
+        text = {
+            Column {
+                Text(
+                    "L/R channel balance (−100 left · 0 center · +100 right)",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when {
+                        balance < 0 -> "L ${-balance}"
+                        balance > 0 -> "R $balance"
+                        else -> "Center"
+                    },
+                    color = ForgeAccent,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Slider(
+                    value = balance.toFloat(),
+                    onValueChange = { onChange(it.toInt()) },
+                    valueRange = -100f..100f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = ForgeAccent,
+                        activeTrackColor = ForgeAccent,
+                        inactiveTrackColor = ForgeMuted.copy(alpha = 0.3f),
+                    ),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("L", color = ForgeMuted)
+                    Text("R", color = ForgeMuted)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(-100, -50, 0, 50, 100).forEach { v ->
+                        FilterChip(
+                            selected = balance == v,
+                            onClick = { onChange(v) },
+                            label = {
+                                Text(
+                                    when (v) {
+                                        -100 -> "L"
+                                        100 -> "R"
+                                        0 -> "C"
+                                        else -> "$v"
+                                    },
+                                )
+                            },
+                            colors = chip140(),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done", color = ForgeAccent) }
+        },
+    )
+}

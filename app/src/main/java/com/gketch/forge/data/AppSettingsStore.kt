@@ -61,6 +61,19 @@ enum class GestureSensitivity(val label: String, val multiplier: Float) {
     HIGH("High", 1.65f),
 }
 
+enum class AppLanguage(val label: String) {
+    SYSTEM("System"),
+    ENGLISH("English"),
+    HINDI("हिन्दी"),
+}
+
+enum class MinClipLength(val label: String, val seconds: Int) {
+    OFF("Off", 0),
+    SEC_15("15s", 15),
+    SEC_30("30s", 30),
+    SEC_60("60s", 60),
+}
+
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
@@ -77,6 +90,10 @@ data class AppSettings(
     val defaultPlaybackSpeed: Float = 1.0f,
     val lastLibraryTab: String = "VIDEO",
     val gestureSensitivity: GestureSensitivity = GestureSensitivity.NORMAL,
+    val minClipLength: MinClipLength = MinClipLength.OFF,
+    val appLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val streamUserAgent: String = "",
+    val streamTimeoutSec: Int = 20,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -94,6 +111,10 @@ data class AppSettings(
         .put("defaultPlaybackSpeed", defaultPlaybackSpeed.toDouble())
         .put("lastLibraryTab", lastLibraryTab)
         .put("gestureSensitivity", gestureSensitivity.name)
+        .put("minClipLength", minClipLength.name)
+        .put("appLanguage", appLanguage.name)
+        .put("streamUserAgent", streamUserAgent)
+        .put("streamTimeoutSec", streamTimeoutSec)
 }
 
 class AppSettingsStore(context: Context) {
@@ -142,6 +163,19 @@ class AppSettingsStore(context: Context) {
             gestureSensitivity = runCatching {
                 GestureSensitivity.valueOf(p[KEY_GESTURE_SENS] ?: GestureSensitivity.NORMAL.name)
             }.getOrDefault(GestureSensitivity.NORMAL),
+            minClipLength = runCatching {
+                MinClipLength.valueOf(p[KEY_MIN_CLIP] ?: MinClipLength.OFF.name)
+            }.getOrDefault(MinClipLength.OFF),
+            appLanguage = runCatching {
+                AppLanguage.valueOf(p[KEY_LANG] ?: AppLanguage.SYSTEM.name)
+            }.getOrDefault(AppLanguage.SYSTEM),
+            streamUserAgent = p[KEY_STREAM_UA] ?: "",
+            streamTimeoutSec = (p[KEY_STREAM_TIMEOUT] ?: 20).let { t ->
+                when (t) {
+                    10, 20, 30, 60 -> t
+                    else -> 20
+                }
+            },
         )
     }
 
@@ -214,6 +248,26 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_GESTURE_SENS] = value.name }
     }
 
+    suspend fun setMinClipLength(value: MinClipLength) {
+        store.edit { it[KEY_MIN_CLIP] = value.name }
+    }
+
+    suspend fun setAppLanguage(value: AppLanguage) {
+        store.edit { it[KEY_LANG] = value.name }
+    }
+
+    suspend fun setStreamUserAgent(value: String) {
+        store.edit { it[KEY_STREAM_UA] = value.trim().take(256) }
+    }
+
+    suspend fun setStreamTimeoutSec(value: Int) {
+        val v = when (value) {
+            10, 20, 30, 60 -> value
+            else -> 20
+        }
+        store.edit { it[KEY_STREAM_TIMEOUT] = v }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -231,6 +285,10 @@ class AppSettingsStore(context: Context) {
             if (o.has("defaultPlaybackSpeed")) p[KEY_DEFAULT_SPEED] = o.optDouble("defaultPlaybackSpeed", 1.0).toFloat()
             if (o.has("lastLibraryTab")) p[KEY_LAST_TAB] = o.optString("lastLibraryTab", "VIDEO")
             if (o.has("gestureSensitivity")) p[KEY_GESTURE_SENS] = o.optString("gestureSensitivity")
+            if (o.has("minClipLength")) p[KEY_MIN_CLIP] = o.optString("minClipLength")
+            if (o.has("appLanguage")) p[KEY_LANG] = o.optString("appLanguage")
+            if (o.has("streamUserAgent")) p[KEY_STREAM_UA] = o.optString("streamUserAgent")
+            if (o.has("streamTimeoutSec")) p[KEY_STREAM_TIMEOUT] = o.optInt("streamTimeoutSec", 20)
         }
     }
 
@@ -250,7 +308,12 @@ class AppSettingsStore(context: Context) {
         private val KEY_DEFAULT_SPEED = floatPreferencesKey("default_playback_speed")
         private val KEY_LAST_TAB = stringPreferencesKey("last_library_tab")
         private val KEY_GESTURE_SENS = stringPreferencesKey("gesture_sensitivity")
+        private val KEY_MIN_CLIP = stringPreferencesKey("min_clip_length")
+        private val KEY_LANG = stringPreferencesKey("app_language")
+        private val KEY_STREAM_UA = stringPreferencesKey("stream_user_agent")
+        private val KEY_STREAM_TIMEOUT = intPreferencesKey("stream_timeout_sec")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
+        val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)
         val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     }

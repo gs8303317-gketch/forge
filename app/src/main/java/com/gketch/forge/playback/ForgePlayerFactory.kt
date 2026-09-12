@@ -5,10 +5,13 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
 @UnstableApi
 object ForgePlayerFactory {
@@ -26,7 +29,18 @@ object ForgePlayerFactory {
 
         val renderersFactory = ForgeRenderersFactory(context, prefs.decoder)
 
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(ForgeStreamOptions.userAgent)
+            .setConnectTimeoutMs(ForgeStreamOptions.connectTimeoutMs)
+            .setReadTimeoutMs(ForgeStreamOptions.readTimeoutMs)
+            .setAllowCrossProtocolRedirects(true)
+
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(dataSourceFactory)
+
         val exo = ExoPlayer.Builder(context, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)

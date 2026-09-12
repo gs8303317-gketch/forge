@@ -14,6 +14,7 @@ import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.gketch.forge.MainActivity
+import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.widget.PlaybackWidgetUpdater
 import com.gketch.forge.R
 import com.google.common.collect.ImmutableList
@@ -40,6 +41,10 @@ class PlaybackService : MediaSessionService() {
         runBlocking {
             runCatching {
                 ForgePlayerPrefsStore(this@PlaybackService).prefs.first()
+            }
+            runCatching {
+                val app = AppSettingsStore(this@PlaybackService).settings.first()
+                ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
             }
         }
 
@@ -82,6 +87,11 @@ class PlaybackService : MediaSessionService() {
                 ForgeEngine.setAudioDelayMs(prefs.audioDelayMs)
                 ForgeEngine.setSkipSilence(prefs.skipSilence)
                 ForgeEngine.setPreciseSeek(prefs.preciseSeek)
+            }
+        }
+        scope.launch {
+            AppSettingsStore(this@PlaybackService).settings.collect { app ->
+                ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
             }
         }
 

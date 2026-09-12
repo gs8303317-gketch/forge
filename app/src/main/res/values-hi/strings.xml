@@ -110,4 +110,9 @@
     <string name="lyrics_empty">इस ट्रैक के बोल नहीं मिले</string>
     <string name="lyrics_empty_sub">एम्बेडेड बोल या मैचिंग .lrc यहाँ दिखेंगे</string>
     <string name="lyrics_source">स्रोत: %1$s</string>
+    <string name="controls_auto_hide">प्लेयर नियंत्रण ऑटो-हाइड</string>
+    <string name="controls_auto_hide_sub">चलते समय कुछ सेकंड बाद कंट्रोल छुपें; मेन्यू खुले तो टाइमर रुकता है</string>
+    <string name="lock_controls">कंट्रोल लॉक</string>
+    <string name="aspect_cycle">आस्पेक्ट · %1$s</string>
+    <string name="unlock_controls">अनलॉक</string>
 </resources>

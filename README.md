@@ -18,6 +18,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Back stack: system back matches toolbar (folder → parent, settings/player → previous); exit confirm at root
 - Scroll position restored for folders and media lists after back / player
 - Playback harden 1.15.0: auto-retry Unexpected runtime errors, isolate optional FX, lyrics MMR only on demand, Coil thumb cache
+- Player chrome 1.16.0: longer controls auto-hide (5.5s) paused while menus/dialogs open; optional disable in Settings; lock moved to ⋮ overflow + corner unlock; aspect Fit/Fill/Zoom side rail
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -32,7 +33,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Stream quality / video track picker (HLS/DASH variants)
 - M3U playlist import / export (local files)
 - Volume boost above 100% (LoudnessEnhancer, capped)
-- Control lock (gestures/controls off; tap zone to unlock)
+- Control lock in ⋮ menu (gestures/controls off; corner unlock affordance)
 - Frame snapshot to Pictures/Forge
 - VLC-style home: Video | Audio | Playlists | Browse bottom navigation
 - Sort in a toolbar menu (name / date / size / duration); grid/list toggle
@@ -55,7 +56,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Audio track selection
 - Repeat (off / one / all) and shuffle
 - Double-tap seek (configurable ±5/10/15/30s)
-- Aspect ratio: Fit / Fill / Zoom
+- Aspect ratio: Fit / Fill / Zoom via side rail cycle (quick access)
 - Sleep timer (15/30/45/60 min)
 - Player gestures: brightness (left 20%), volume (right 20%), horizontal seek (middle); controls stay tappable
 - Resume playback per media URI
@@ -115,4 +116,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.15.0 (17)
+- **version:** 1.16.0 (18)

@@ -269,6 +269,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.controls_auto_hide),
+                    subtitle = stringResource(R.string.controls_auto_hide_sub),
+                    checked = app.controlsAutoHide,
+                    onChecked = { scope.launch { appStore.setControlsAutoHide(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.exclude_short_clips), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(

@@ -22,11 +22,11 @@ android {
         applicationId = "com.gketch.forge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.15.0"
+        versionCode = 18
+        versionName = "1.16.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "VERSION_NAME", "\"1.15.0\"")
-        buildConfigField("int", "VERSION_CODE", "17")
+        buildConfigField("String", "VERSION_NAME", "\"1.16.0\"")
+        buildConfigField("int", "VERSION_CODE", "18")
     }
 
     signingConfigs {

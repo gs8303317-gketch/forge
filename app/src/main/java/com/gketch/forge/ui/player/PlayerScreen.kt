@@ -271,6 +271,7 @@ fun PlayerScreen(
     val bookmarkStore = remember { BookmarkStore(context) }
     var allBookmarks by remember { mutableStateOf<List<MediaBookmark>>(emptyList()) }
     var controlsLocked by remember { mutableStateOf(false) }
+    var controlsHideToken by remember { mutableIntStateOf(0) }
     var subtitleDelayMs by remember { mutableIntStateOf(0) }
     var audioDelayMs by remember { mutableIntStateOf(ForgeEngine.audioDelayMs) }
     val enginePrefsStore = remember { ForgePlayerPrefsStore(context) }
@@ -722,14 +723,28 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, inPip, panel, controlsLocked) {
+    LaunchedEffect(
+        controlsVisible,
+        isPlaying,
+        inPip,
+        panel,
+        controlsLocked,
+        moreMenu,
+        scrubbing,
+        resumePromptMs,
+        controlsHideToken,
+        appSettings.controlsAutoHide,
+    ) {
         if (controlsLocked) {
             controlsVisible = false
             panel = Panel.None
+            moreMenu = false
             return@LaunchedEffect
         }
-        if (controlsVisible && isPlaying && !inPip && panel == Panel.None) {
-            delay(4_000)
+        if (!appSettings.controlsAutoHide) return@LaunchedEffect
+        val overlayOpen = panel != Panel.None || moreMenu || scrubbing || resumePromptMs != null
+        if (controlsVisible && isPlaying && !inPip && !overlayOpen) {
+            delay(5_500)
             controlsVisible = false
         }
     }
@@ -798,6 +813,12 @@ fun PlayerScreen(
     }
 
     BackHandler {
+        if (controlsLocked) {
+            controlsLocked = false
+            controlsVisible = true
+            controlsHideToken++
+            return@BackHandler
+        }
         val player = controller
         val uri = current?.uri?.toString()
         if (player != null && uri != null) {
@@ -878,6 +899,7 @@ fun PlayerScreen(
                             controller.seekTo(target)
                             positionMs = target
                             controlsVisible = true
+                            controlsHideToken++
                         },
                         onVolumeFraction = { setMusicVolume(context, it) },
                         onBrightnessFraction = { frac ->
@@ -904,7 +926,12 @@ fun PlayerScreen(
                         onTap = {
                             if (controlsLocked) return@PlayerGestureLayer
                             controlsVisible = !controlsVisible
-                            if (!controlsVisible) panel = Panel.None
+                            if (!controlsVisible) {
+                                panel = Panel.None
+                                moreMenu = false
+                            } else {
+                                controlsHideToken++
+                            }
                         },
                         currentVolume = { musicVolumeFraction(context) },
                         currentBrightness = { windowBrightness(activity) },
@@ -946,26 +973,30 @@ fun PlayerScreen(
                     }
                 }
 
-                // Control lock unlock zone
+                // Minimal VLC-style corner unlock when controls are locked
                 if (controlsLocked && !inPip) {
-                    Box(
+                    IconButton(
+                        onClick = {
+                            controlsLocked = false
+                            controlsVisible = true
+                            controlsHideToken++
+                        },
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 28.dp)
+                            .align(Alignment.BottomEnd)
+                            .navigationBarsPadding()
+                            .padding(end = 12.dp, bottom = 12.dp)
                             .zIndex(8f)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .border(1.dp, ForgeAccent.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-                            .clickable {
-                                controlsLocked = false
-                                controlsVisible = true
-                            }
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f))
+                            .border(1.dp, ForgeAccent.copy(alpha = 0.55f), CircleShape),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.LockOpen, contentDescription = null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
-                            Text("Tap to unlock", color = Color.White, style = MaterialTheme.typography.labelLarge)
-                        }
+                        Icon(
+                            Icons.Rounded.LockOpen,
+                            contentDescription = stringResource(R.string.unlock_controls),
+                            tint = ForgeAccent,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 }
             }
@@ -1043,6 +1074,39 @@ fun PlayerScreen(
             }
         }
 
+        // Side aspect cycle (Fit → Fill → Zoom) — quick access like VLC
+        if (showChrome && isVideoSurface) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 6.dp)
+                    .zIndex(5f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.Black.copy(alpha = 0.42f))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                    .clickable {
+                        val modes = AspectMode.entries
+                        aspect = modes[(aspect.ordinal + 1) % modes.size]
+                        controlsHideToken++
+                    }
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.AspectRatio,
+                    contentDescription = stringResource(R.string.aspect_cycle, aspect.label),
+                    tint = ForgeAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = aspect.label,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+
         AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.TopCenter).zIndex(4f)) {
             PlayerTopBar(
                 title = current?.title ?: "Player",
@@ -1056,7 +1120,9 @@ fun PlayerScreen(
                 },
                 boostLabel = volumeBoostPercent.takeIf { it > 100 }?.let { "Boost $it%" },
                 moreExpanded = moreMenu,
+                onInteract = { controlsHideToken++ },
                 onBack = {
+                    controlsHideToken++
                     val player = controller
                     val uri = current?.uri?.toString()
                     if (player != null && uri != null) {
@@ -1064,15 +1130,24 @@ fun PlayerScreen(
                     }
                     onBack()
                 },
-                onPip = { activity?.enterPip() },
-                onSpeed = { panel = if (panel == Panel.Speed) Panel.None else Panel.Speed },
+                onPip = {
+                    controlsHideToken++
+                    activity?.enterPip()
+                },
+                onSpeed = {
+                    controlsHideToken++
+                    panel = if (panel == Panel.Speed) Panel.None else Panel.Speed
+                },
                 onLock = {
                     controlsLocked = true
                     controlsVisible = false
                     panel = Panel.None
                     moreMenu = false
                 },
-                onMore = { moreMenu = true },
+                onMore = {
+                    moreMenu = true
+                    controlsHideToken++
+                },
                 onDismissMore = { moreMenu = false },
                 onSubtitles = {
                     moreMenu = false
@@ -1085,10 +1160,6 @@ fun PlayerScreen(
                 onQuality = {
                     moreMenu = false
                     panel = Panel.Quality
-                },
-                onAspect = {
-                    moreMenu = false
-                    panel = Panel.Aspect
                 },
                 onSleep = {
                     moreMenu = false
@@ -1184,7 +1255,6 @@ fun PlayerScreen(
                 },
                 playAsAudio = playAsAudio,
                 showPlayAsAudio = current?.kind == MediaKind.VIDEO || hasVideo,
-                showAspect = isVideoSurface,
                 showSnapshot = isVideoSurface,
                 showChapters = chapters.isNotEmpty(),
             )
@@ -1306,6 +1376,7 @@ fun PlayerScreen(
                 repeatMode = repeatMode,
                 shuffleOn = shuffleOn,
                 showFrameStep = !isPlaying && isVideoSurface && frameStepAvailable,
+                onInteract = { controlsHideToken++ },
                 onFrameStep = { forward ->
                     val player = controller ?: return@PlayerControls
                     val step = estimateFrameStepMs(player)
@@ -1321,6 +1392,7 @@ fun PlayerScreen(
                 onScrub = {
                     scrubbing = true
                     scrubValue = it
+                    controlsHideToken++
                 },
                 onScrubEnd = {
                     val seekTo = (scrubValue * durationMs).toLong()
@@ -1751,13 +1823,13 @@ fun PlayerScreen(
 private fun PlayerTopBar(
     title: String,
     showPip: Boolean,
-    showAspect: Boolean,
     showSnapshot: Boolean,
     speed: Float,
     sleepLabel: String?,
     abLabel: String?,
     boostLabel: String?,
     moreExpanded: Boolean,
+    onInteract: () -> Unit,
     onBack: () -> Unit,
     onPip: () -> Unit,
     onSpeed: () -> Unit,
@@ -1767,7 +1839,6 @@ private fun PlayerTopBar(
     onSubtitles: () -> Unit,
     onAudio: () -> Unit,
     onQuality: () -> Unit,
-    onAspect: () -> Unit,
     onSleep: () -> Unit,
     onEqualizer: () -> Unit,
     onOrientation: () -> Unit,
@@ -1798,7 +1869,7 @@ private fun PlayerTopBar(
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick = {},
+                onClick = onInteract,
             )
             .padding(horizontal = 2.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1856,9 +1927,6 @@ private fun PlayerTopBar(
                 )
             }
         }
-        IconButton(onClick = onLock) {
-            Icon(Icons.Rounded.Lock, contentDescription = "Lock controls", tint = Color.White)
-        }
         ForgeCastButton()
         Box {
             IconButton(onClick = onMore) {
@@ -1869,6 +1937,13 @@ private fun PlayerTopBar(
                 onDismissRequest = onDismissMore,
                 containerColor = ForgeGraphite,
             ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.lock_controls), color = Color.White) },
+                    onClick = onLock,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Lock, null, tint = ForgeAccent)
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text("Subtitles", color = Color.White) },
                     onClick = onSubtitles,
@@ -1890,15 +1965,7 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.HighQuality, null, tint = ForgeAccent)
                     },
                 )
-                if (showAspect) {
-                    DropdownMenuItem(
-                        text = { Text("Aspect ratio", color = Color.White) },
-                        onClick = onAspect,
-                        leadingIcon = {
-                            Icon(Icons.Rounded.AspectRatio, null, tint = ForgeAccent)
-                        },
-                    )
-                }
+                // Aspect ratio lives on the side rail for quick Fit/Fill/Zoom cycling
                 DropdownMenuItem(
                     text = { Text("Sleep timer", color = Color.White) },
                     onClick = onSleep,
@@ -2097,6 +2164,7 @@ private fun PlayerControls(
     repeatMode: Int,
     shuffleOn: Boolean,
     showFrameStep: Boolean = false,
+    onInteract: () -> Unit = {},
     onFrameStep: (forward: Boolean) -> Unit = {},
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
@@ -2114,7 +2182,7 @@ private fun PlayerControls(
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
-                onClick = {},
+                onClick = onInteract,
             )
             .padding(horizontal = 10.dp, vertical = 4.dp),
     ) {

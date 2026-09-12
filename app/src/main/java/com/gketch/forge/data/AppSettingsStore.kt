@@ -104,6 +104,7 @@ data class AppSettings(
     val gaplessPlayback: Boolean = true,
     val crossfade: CrossfadeDuration = CrossfadeDuration.OFF,
     val loudnessNormalize: Boolean = false,
+    val controlsAutoHide: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -128,6 +129,7 @@ data class AppSettings(
         .put("gaplessPlayback", gaplessPlayback)
         .put("crossfade", crossfade.name)
         .put("loudnessNormalize", loudnessNormalize)
+        .put("controlsAutoHide", controlsAutoHide)
 }
 
 class AppSettingsStore(context: Context) {
@@ -194,6 +196,7 @@ class AppSettingsStore(context: Context) {
                 CrossfadeDuration.valueOf(p[KEY_CROSSFADE] ?: CrossfadeDuration.OFF.name)
             }.getOrDefault(CrossfadeDuration.OFF),
             loudnessNormalize = p[KEY_LOUDNESS_NORM] ?: false,
+            controlsAutoHide = p[KEY_CONTROLS_AUTO_HIDE] ?: true,
         )
     }
 
@@ -298,6 +301,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_LOUDNESS_NORM] = value }
     }
 
+    suspend fun setControlsAutoHide(value: Boolean) {
+        store.edit { it[KEY_CONTROLS_AUTO_HIDE] = value }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -322,6 +329,7 @@ class AppSettingsStore(context: Context) {
             if (o.has("gaplessPlayback")) p[KEY_GAPLESS] = o.optBoolean("gaplessPlayback", true)
             if (o.has("crossfade")) p[KEY_CROSSFADE] = o.optString("crossfade")
             if (o.has("loudnessNormalize")) p[KEY_LOUDNESS_NORM] = o.optBoolean("loudnessNormalize", false)
+            if (o.has("controlsAutoHide")) p[KEY_CONTROLS_AUTO_HIDE] = o.optBoolean("controlsAutoHide", true)
         }
     }
 
@@ -348,6 +356,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_GAPLESS = booleanPreferencesKey("gapless_playback")
         private val KEY_CROSSFADE = stringPreferencesKey("crossfade")
         private val KEY_LOUDNESS_NORM = booleanPreferencesKey("loudness_normalize")
+        private val KEY_CONTROLS_AUTO_HIDE = booleanPreferencesKey("controls_auto_hide")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

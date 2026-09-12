@@ -56,6 +56,7 @@ import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.GestureSensitivity
 import com.gketch.forge.data.MinClipLength
 import com.gketch.forge.data.AppSettingsStore
+import com.gketch.forge.data.ChromeHideDelay
 import com.gketch.forge.data.CrossfadeDuration
 import com.gketch.forge.data.LibraryStorageHint
 import com.gketch.forge.data.MediaRepository
@@ -269,11 +270,26 @@ fun SettingsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
-                EngineSwitchRow(
-                    title = stringResource(R.string.controls_auto_hide),
-                    subtitle = stringResource(R.string.controls_auto_hide_sub),
-                    checked = app.controlsAutoHide,
-                    onChecked = { scope.launch { appStore.setControlsAutoHide(it) } },
+                Text(stringResource(R.string.chrome_hide_delay), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ChromeHideDelay.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.chromeHideDelay == opt,
+                            onClick = { scope.launch { appStore.setChromeHideDelay(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.chrome_hide_delay_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.exclude_short_clips), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)

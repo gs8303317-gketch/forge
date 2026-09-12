@@ -24,6 +24,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -733,18 +735,22 @@ fun PlayerScreen(
         scrubbing,
         resumePromptMs,
         controlsHideToken,
-        appSettings.controlsAutoHide,
+        appSettings.chromeHideDelay,
     ) {
         if (controlsLocked) {
-            controlsVisible = false
             panel = Panel.None
             moreMenu = false
+            val hideMs = appSettings.chromeHideDelay.delayMs
+            if (hideMs != null && controlsVisible && !inPip) {
+                delay(hideMs)
+                controlsVisible = false
+            }
             return@LaunchedEffect
         }
-        if (!appSettings.controlsAutoHide) return@LaunchedEffect
+        val hideMs = appSettings.chromeHideDelay.delayMs ?: return@LaunchedEffect
         val overlayOpen = panel != Panel.None || moreMenu || scrubbing || resumePromptMs != null
         if (controlsVisible && isPlaying && !inPip && !overlayOpen) {
-            delay(5_500)
+            delay(hideMs)
             controlsVisible = false
         }
     }
@@ -828,6 +834,7 @@ fun PlayerScreen(
     }
 
     val showChrome = controlsVisible && !inPip && !controlsLocked
+    val showLockChrome = controlsVisible && !inPip && controlsLocked
     val isVideoSurface = !playAsAudio && (hasVideo || current?.kind == MediaKind.VIDEO)
 
     Box(
@@ -881,7 +888,13 @@ fun PlayerScreen(
 
                 val density = LocalDensity.current
                 val excludeTopPx = with(density) { if (showChrome) 56.dp.toPx() else 0f }
-                val excludeBottomPx = with(density) { if (showChrome) 108.dp.toPx() else 48.dp.toPx() }
+                val excludeBottomPx = with(density) {
+                    when {
+                        showChrome -> 108.dp.toPx()
+                        showLockChrome -> 72.dp.toPx()
+                        else -> 48.dp.toPx()
+                    }
+                }
                 if (!inPip) {
                     PlayerGestureLayer(
                         durationMs = durationMs,
@@ -924,7 +937,11 @@ fun PlayerScreen(
                             controller.setPlaybackSpeed(savedSpeed)
                         },
                         onTap = {
-                            if (controlsLocked) return@PlayerGestureLayer
+                            if (controlsLocked) {
+                                controlsVisible = !controlsVisible
+                                if (controlsVisible) controlsHideToken++
+                                return@PlayerGestureLayer
+                            }
                             controlsVisible = !controlsVisible
                             if (!controlsVisible) {
                                 panel = Panel.None
@@ -973,8 +990,8 @@ fun PlayerScreen(
                     }
                 }
 
-                // Minimal VLC-style corner unlock when controls are locked
-                if (controlsLocked && !inPip) {
+                // Unlock affordance follows the same chrome visibility/timer as other controls
+                if (showLockChrome) {
                     IconButton(
                         onClick = {
                             controlsLocked = false
@@ -1074,39 +1091,6 @@ fun PlayerScreen(
             }
         }
 
-        // Side aspect cycle (Fit → Fill → Zoom) — quick access like VLC
-        if (showChrome && isVideoSurface) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 6.dp)
-                    .zIndex(5f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.42f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                    .clickable {
-                        val modes = AspectMode.entries
-                        aspect = modes[(aspect.ordinal + 1) % modes.size]
-                        controlsHideToken++
-                    }
-                    .padding(horizontal = 8.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Icon(
-                    Icons.Rounded.AspectRatio,
-                    contentDescription = stringResource(R.string.aspect_cycle, aspect.label),
-                    tint = ForgeAccent,
-                    modifier = Modifier.size(20.dp),
-                )
-                Text(
-                    text = aspect.label,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
-
         AnimatedVisibility(visible = showChrome, modifier = Modifier.align(Alignment.TopCenter).zIndex(4f)) {
             PlayerTopBar(
                 title = current?.title ?: "Player",
@@ -1135,6 +1119,7 @@ fun PlayerScreen(
                     activity?.enterPip()
                 },
                 onSpeed = {
+                    moreMenu = false
                     controlsHideToken++
                     panel = if (panel == Panel.Speed) Panel.None else Panel.Speed
                 },
@@ -1376,7 +1361,20 @@ fun PlayerScreen(
                 repeatMode = repeatMode,
                 shuffleOn = shuffleOn,
                 showFrameStep = !isPlaying && isVideoSurface && frameStepAvailable,
+                showAspect = isVideoSurface,
+                aspectLabel = aspect.label,
                 onInteract = { controlsHideToken++ },
+                onCycleAspect = {
+                    val modes = AspectMode.entries
+                    aspect = modes[(aspect.ordinal + 1) % modes.size]
+                    controlsHideToken++
+                },
+                onLongAspect = {
+                    val modes = AspectMode.entries
+                    aspect = modes[(aspect.ordinal + 1) % modes.size]
+                    Toast.makeText(context, aspect.label, Toast.LENGTH_SHORT).show()
+                    controlsHideToken++
+                },
                 onFrameStep = { forward ->
                     val player = controller ?: return@PlayerControls
                     val step = estimateFrameStepMs(player)
@@ -1909,15 +1907,6 @@ private fun PlayerTopBar(
                 }
             }
         }
-        IconButton(onClick = onSpeed) {
-            Icon(Icons.Rounded.Speed, contentDescription = "Speed", tint = Color.White)
-        }
-        Text(
-            text = formatSpeed(speed),
-            style = MaterialTheme.typography.labelSmall,
-            color = ForgeAccent,
-            modifier = Modifier.padding(end = 4.dp),
-        )
         if (showPip) {
             IconButton(onClick = onPip) {
                 Icon(
@@ -1945,6 +1934,13 @@ private fun PlayerTopBar(
                     },
                 )
                 DropdownMenuItem(
+                    text = { Text("Speed · ${formatSpeed(speed)}", color = Color.White) },
+                    onClick = onSpeed,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Speed, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
                     text = { Text("Subtitles", color = Color.White) },
                     onClick = onSubtitles,
                     leadingIcon = {
@@ -1965,7 +1961,7 @@ private fun PlayerTopBar(
                         Icon(Icons.Rounded.HighQuality, null, tint = ForgeAccent)
                     },
                 )
-                // Aspect ratio lives on the side rail for quick Fit/Fill/Zoom cycling
+                // Aspect ratio cycles from the bottom control row (Fit/Fill/Zoom)
                 DropdownMenuItem(
                     text = { Text("Sleep timer", color = Color.White) },
                     onClick = onSleep,
@@ -2153,6 +2149,7 @@ private fun chipColors() = FilterChipDefaults.filterChipColors(
 )
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun PlayerControls(
     positionMs: Long,
     durationMs: Long,
@@ -2164,8 +2161,12 @@ private fun PlayerControls(
     repeatMode: Int,
     shuffleOn: Boolean,
     showFrameStep: Boolean = false,
+    showAspect: Boolean = false,
+    aspectLabel: String = "Fit",
     onInteract: () -> Unit = {},
     onFrameStep: (forward: Boolean) -> Unit = {},
+    onCycleAspect: () -> Unit = {},
+    onLongAspect: () -> Unit = {},
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onPrev: () -> Unit,
@@ -2227,6 +2228,30 @@ private fun PlayerControls(
                     tint = if (shuffleOn) ForgeAccent else Color.White,
                     modifier = Modifier.size(22.dp),
                 )
+            }
+            if (showAspect) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .combinedClickable(
+                            onClick = onCycleAspect,
+                            onLongClick = onLongAspect,
+                        )
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.AspectRatio,
+                        contentDescription = stringResource(R.string.aspect_cycle, aspectLabel),
+                        tint = ForgeAccent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = aspectLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
             }
             if (showFrameStep) {
                 IconButton(onClick = { onFrameStep(false) }) {

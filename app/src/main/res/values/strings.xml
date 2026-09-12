@@ -112,6 +112,9 @@
     <string name="lyrics_source">Source: %1$s</string>
     <string name="controls_auto_hide">Auto-hide player controls</string>
     <string name="controls_auto_hide_sub">Hide chrome after a few seconds while playing; menus pause the timer</string>
+    <string name="chrome_hide_delay">Chrome hide delay</string>
+    <string name="chrome_hide_delay_sub">How long player controls stay visible while playing; menus pause the timer</string>
+    <string name="aspect_mode_toast">%1$s</string>
     <string name="lock_controls">Lock controls</string>
     <string name="aspect_cycle">Aspect · %1$s</string>
     <string name="unlock_controls">Unlock</string>

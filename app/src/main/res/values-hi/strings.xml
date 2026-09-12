@@ -112,6 +112,9 @@
     <string name="lyrics_source">स्रोत: %1$s</string>
     <string name="controls_auto_hide">प्लेयर नियंत्रण ऑटो-हाइड</string>
     <string name="controls_auto_hide_sub">चलते समय कुछ सेकंड बाद कंट्रोल छुपें; मेन्यू खुले तो टाइमर रुकता है</string>
+    <string name="chrome_hide_delay">क्रोम हाइड देरी</string>
+    <string name="chrome_hide_delay_sub">चलते समय नियंत्रण कितनी देर दिखें; मेन्यू खुले तो टाइमर रुकता है</string>
+    <string name="aspect_mode_toast">%1$s</string>
     <string name="lock_controls">कंट्रोल लॉक</string>
     <string name="aspect_cycle">आस्पेक्ट · %1$s</string>
     <string name="unlock_controls">अनलॉक</string>

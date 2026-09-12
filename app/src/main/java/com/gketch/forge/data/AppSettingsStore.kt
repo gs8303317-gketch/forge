@@ -81,6 +81,14 @@ enum class CrossfadeDuration(val label: String, val seconds: Int) {
     SEC_3("3s", 3),
 }
 
+enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
+    SEC_3("3s", 3_000L),
+    SEC_5_5("5.5s", 5_500L),
+    SEC_8("8s", 8_000L),
+    NEVER("Never", null),
+}
+
+
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
@@ -104,7 +112,7 @@ data class AppSettings(
     val gaplessPlayback: Boolean = true,
     val crossfade: CrossfadeDuration = CrossfadeDuration.OFF,
     val loudnessNormalize: Boolean = false,
-    val controlsAutoHide: Boolean = true,
+    val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_5_5,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -129,7 +137,7 @@ data class AppSettings(
         .put("gaplessPlayback", gaplessPlayback)
         .put("crossfade", crossfade.name)
         .put("loudnessNormalize", loudnessNormalize)
-        .put("controlsAutoHide", controlsAutoHide)
+        .put("chromeHideDelay", chromeHideDelay.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -196,7 +204,13 @@ class AppSettingsStore(context: Context) {
                 CrossfadeDuration.valueOf(p[KEY_CROSSFADE] ?: CrossfadeDuration.OFF.name)
             }.getOrDefault(CrossfadeDuration.OFF),
             loudnessNormalize = p[KEY_LOUDNESS_NORM] ?: false,
-            controlsAutoHide = p[KEY_CONTROLS_AUTO_HIDE] ?: true,
+            chromeHideDelay = runCatching {
+                ChromeHideDelay.valueOf(p[KEY_CHROME_HIDE_DELAY] ?: "")
+            }.getOrElse {
+                // Migrate 1.16 boolean toggle → delay picker
+                if (p[KEY_CONTROLS_AUTO_HIDE] == false) ChromeHideDelay.NEVER
+                else ChromeHideDelay.SEC_5_5
+            },
         )
     }
 
@@ -301,8 +315,8 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_LOUDNESS_NORM] = value }
     }
 
-    suspend fun setControlsAutoHide(value: Boolean) {
-        store.edit { it[KEY_CONTROLS_AUTO_HIDE] = value }
+    suspend fun setChromeHideDelay(value: ChromeHideDelay) {
+        store.edit { it[KEY_CHROME_HIDE_DELAY] = value.name }
     }
 
     suspend fun replaceFromJson(o: JSONObject) {
@@ -329,7 +343,15 @@ class AppSettingsStore(context: Context) {
             if (o.has("gaplessPlayback")) p[KEY_GAPLESS] = o.optBoolean("gaplessPlayback", true)
             if (o.has("crossfade")) p[KEY_CROSSFADE] = o.optString("crossfade")
             if (o.has("loudnessNormalize")) p[KEY_LOUDNESS_NORM] = o.optBoolean("loudnessNormalize", false)
-            if (o.has("controlsAutoHide")) p[KEY_CONTROLS_AUTO_HIDE] = o.optBoolean("controlsAutoHide", true)
+            if (o.has("chromeHideDelay")) {
+                p[KEY_CHROME_HIDE_DELAY] = o.optString("chromeHideDelay", ChromeHideDelay.SEC_5_5.name)
+            } else if (o.has("controlsAutoHide")) {
+                p[KEY_CHROME_HIDE_DELAY] = if (o.optBoolean("controlsAutoHide", true)) {
+                    ChromeHideDelay.SEC_5_5.name
+                } else {
+                    ChromeHideDelay.NEVER.name
+                }
+            }
         }
     }
 
@@ -356,7 +378,8 @@ class AppSettingsStore(context: Context) {
         private val KEY_GAPLESS = booleanPreferencesKey("gapless_playback")
         private val KEY_CROSSFADE = stringPreferencesKey("crossfade")
         private val KEY_LOUDNESS_NORM = booleanPreferencesKey("loudness_normalize")
-        private val KEY_CONTROLS_AUTO_HIDE = booleanPreferencesKey("controls_auto_hide")
+        private val KEY_CONTROLS_AUTO_HIDE = booleanPreferencesKey("controls_auto_hide") // legacy migrate
+        private val KEY_CHROME_HIDE_DELAY = stringPreferencesKey("chrome_hide_delay")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

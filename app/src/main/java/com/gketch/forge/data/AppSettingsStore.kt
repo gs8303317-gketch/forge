@@ -74,6 +74,13 @@ enum class MinClipLength(val label: String, val seconds: Int) {
     SEC_60("60s", 60),
 }
 
+enum class CrossfadeDuration(val label: String, val seconds: Int) {
+    OFF("Off", 0),
+    SEC_1("1s", 1),
+    SEC_2("2s", 2),
+    SEC_3("3s", 3),
+}
+
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
@@ -94,6 +101,9 @@ data class AppSettings(
     val appLanguage: AppLanguage = AppLanguage.SYSTEM,
     val streamUserAgent: String = "",
     val streamTimeoutSec: Int = 20,
+    val gaplessPlayback: Boolean = true,
+    val crossfade: CrossfadeDuration = CrossfadeDuration.OFF,
+    val loudnessNormalize: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -115,6 +125,9 @@ data class AppSettings(
         .put("appLanguage", appLanguage.name)
         .put("streamUserAgent", streamUserAgent)
         .put("streamTimeoutSec", streamTimeoutSec)
+        .put("gaplessPlayback", gaplessPlayback)
+        .put("crossfade", crossfade.name)
+        .put("loudnessNormalize", loudnessNormalize)
 }
 
 class AppSettingsStore(context: Context) {
@@ -176,6 +189,11 @@ class AppSettingsStore(context: Context) {
                     else -> 20
                 }
             },
+            gaplessPlayback = p[KEY_GAPLESS] ?: true,
+            crossfade = runCatching {
+                CrossfadeDuration.valueOf(p[KEY_CROSSFADE] ?: CrossfadeDuration.OFF.name)
+            }.getOrDefault(CrossfadeDuration.OFF),
+            loudnessNormalize = p[KEY_LOUDNESS_NORM] ?: false,
         )
     }
 
@@ -268,6 +286,18 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_STREAM_TIMEOUT] = v }
     }
 
+    suspend fun setGaplessPlayback(value: Boolean) {
+        store.edit { it[KEY_GAPLESS] = value }
+    }
+
+    suspend fun setCrossfade(value: CrossfadeDuration) {
+        store.edit { it[KEY_CROSSFADE] = value.name }
+    }
+
+    suspend fun setLoudnessNormalize(value: Boolean) {
+        store.edit { it[KEY_LOUDNESS_NORM] = value }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -289,6 +319,9 @@ class AppSettingsStore(context: Context) {
             if (o.has("appLanguage")) p[KEY_LANG] = o.optString("appLanguage")
             if (o.has("streamUserAgent")) p[KEY_STREAM_UA] = o.optString("streamUserAgent")
             if (o.has("streamTimeoutSec")) p[KEY_STREAM_TIMEOUT] = o.optInt("streamTimeoutSec", 20)
+            if (o.has("gaplessPlayback")) p[KEY_GAPLESS] = o.optBoolean("gaplessPlayback", true)
+            if (o.has("crossfade")) p[KEY_CROSSFADE] = o.optString("crossfade")
+            if (o.has("loudnessNormalize")) p[KEY_LOUDNESS_NORM] = o.optBoolean("loudnessNormalize", false)
         }
     }
 
@@ -312,6 +345,9 @@ class AppSettingsStore(context: Context) {
         private val KEY_LANG = stringPreferencesKey("app_language")
         private val KEY_STREAM_UA = stringPreferencesKey("stream_user_agent")
         private val KEY_STREAM_TIMEOUT = intPreferencesKey("stream_timeout_sec")
+        private val KEY_GAPLESS = booleanPreferencesKey("gapless_playback")
+        private val KEY_CROSSFADE = stringPreferencesKey("crossfade")
+        private val KEY_LOUDNESS_NORM = booleanPreferencesKey("loudness_normalize")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

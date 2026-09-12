@@ -6,7 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.activity.compose.setContent
@@ -29,7 +29,7 @@ import com.gketch.forge.ui.navigation.ForgeNav
 import com.gketch.forge.ui.theme.ForgeTheme
 import java.util.regex.Pattern
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private var externalUri by mutableStateOf<Uri?>(null)
     private var externalMime by mutableStateOf<String?>(null)

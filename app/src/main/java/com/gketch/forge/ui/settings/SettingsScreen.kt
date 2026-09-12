@@ -1,6 +1,8 @@
 package com.gketch.forge.ui.settings
 
 import android.content.Intent
+import coil.annotation.ExperimentalCoilApi
+import coil.imageLoader
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,6 +56,11 @@ import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.GestureSensitivity
 import com.gketch.forge.data.MinClipLength
 import com.gketch.forge.data.AppSettingsStore
+import com.gketch.forge.data.CrossfadeDuration
+import com.gketch.forge.data.LibraryStorageHint
+import com.gketch.forge.data.MediaRepository
+import com.gketch.forge.data.PinLockState
+import com.gketch.forge.data.PinLockStore
 import com.gketch.forge.data.BackupStore
 import com.gketch.forge.data.HiddenFolder
 import com.gketch.forge.data.HiddenFoldersStore
@@ -65,7 +72,9 @@ import com.gketch.forge.data.SleepEndAction
 import com.gketch.forge.playback.BufferPreset
 import com.gketch.forge.playback.DecoderPreference
 import com.gketch.forge.playback.EnginePrefs
+import com.gketch.forge.playback.ForgeCrossfade
 import com.gketch.forge.playback.ForgeEngine
+import com.gketch.forge.playback.ForgeLoudness
 import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
@@ -73,6 +82,7 @@ import com.gketch.forge.ui.theme.ForgeGraphite
 import com.gketch.forge.ui.theme.ForgeMuted
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
     BackHandler { onBack() }
@@ -92,6 +102,15 @@ fun SettingsScreen(onBack: () -> Unit) {
     var clearDialog by remember { mutableStateOf(false) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
     var pendingExportShare by remember { mutableStateOf(false) }
+    val pinStore = remember { PinLockStore(context) }
+    var pinState by remember { mutableStateOf(PinLockState()) }
+    var pinDialog by remember { mutableStateOf(false) }
+    var pinDraft by remember { mutableStateOf("") }
+    var pinConfirm by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var cacheMessage by remember { mutableStateOf<String?>(null) }
+    var storageHint by remember { mutableStateOf(LibraryStorageHint(0, 0, 0)) }
+    val mediaRepo = remember { MediaRepository(context) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -145,6 +164,16 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(Unit) {
         safStore.folders.collect { safFolders = it }
+    }
+    LaunchedEffect(Unit) {
+        pinStore.state.collect { pinState = it }
+    }
+    LaunchedEffect(Unit) {
+        storageHint = runCatching { mediaRepo.storageHint() }.getOrDefault(LibraryStorageHint(0, 0, 0))
+    }
+    LaunchedEffect(app.crossfade, app.loudnessNormalize, app.gaplessPlayback) {
+        ForgeCrossfade.setDurationSec(app.crossfade.seconds)
+        ForgeLoudness.setNormalizeEnabled(app.loudnessNormalize)
     }
 
     Column(
@@ -541,6 +570,113 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+
+            SettingsCard(title = stringResource(R.string.audio)) {
+                EngineSwitchRow(
+                    title = stringResource(R.string.gapless_playback),
+                    subtitle = stringResource(R.string.gapless_playback_sub),
+                    checked = app.gaplessPlayback,
+                    onChecked = { scope.launch { appStore.setGaplessPlayback(it) } },
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(stringResource(R.string.crossfade), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CrossfadeDuration.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.crossfade == opt,
+                            onClick = {
+                                scope.launch {
+                                    appStore.setCrossfade(opt)
+                                    ForgeCrossfade.setDurationSec(opt.seconds)
+                                }
+                            },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(stringResource(R.string.crossfade_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.loudness_normalize),
+                    subtitle = stringResource(R.string.loudness_normalize_sub),
+                    checked = app.loudnessNormalize,
+                    onChecked = {
+                        scope.launch {
+                            appStore.setLoudnessNormalize(it)
+                            ForgeLoudness.setNormalizeEnabled(it)
+                        }
+                    },
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.pin_lock)) {
+                Text(stringResource(R.string.pin_lock_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+                if (pinState.enabled) {
+                    TextButton(onClick = {
+                        pinDraft = ""
+                        pinConfirm = ""
+                        pinError = null
+                        pinDialog = true
+                    }) { Text(stringResource(R.string.pin_change), color = ForgeAccent) }
+                    TextButton(onClick = { scope.launch { pinStore.disable() } }) {
+                        Text(stringResource(R.string.pin_disable), color = Color.White)
+                    }
+                    EngineSwitchRow(
+                        title = stringResource(R.string.pin_biometric),
+                        subtitle = stringResource(R.string.pin_biometric_sub),
+                        checked = pinState.biometricEnabled,
+                        onChecked = { scope.launch { pinStore.setBiometricEnabled(it) } },
+                    )
+                } else {
+                    TextButton(onClick = {
+                        pinDraft = ""
+                        pinConfirm = ""
+                        pinError = null
+                        pinDialog = true
+                    }) { Text(stringResource(R.string.pin_set), color = ForgeAccent) }
+                }
+            }
+
+            SettingsCard(title = stringResource(R.string.cache_storage)) {
+                val vids = storageHint.videoCount
+                val auds = storageHint.audioCount
+                val bytes = storageHint.totalBytes
+                val sizeLabel = when {
+                    bytes >= 1_000_000_000L -> "%.1f GB".format(bytes / 1_000_000_000.0)
+                    bytes >= 1_000_000L -> "%.0f MB".format(bytes / 1_000_000.0)
+                    bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
+                    else -> "$bytes B"
+                }
+                Text(
+                    stringResource(R.string.library_counts) + ": $vids videos · $auds audio · ~$sizeLabel",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(10.dp))
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching {
+                            context.imageLoader.memoryCache?.clear()
+                            context.imageLoader.diskCache?.clear()
+                        }
+                        cacheMessage = context.getString(R.string.clear_image_cache_done)
+                    }
+                }) {
+                    Text(stringResource(R.string.clear_image_cache), color = ForgeAccent)
+                }
+                cacheMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
             SettingsCard(title = "History") {
                 Text(
                     "Clear recently played items. Optionally also wipe saved resume positions.",
@@ -578,7 +714,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.13 · video color · audio balance · watched · short-clip filter · stream UA/timeout · shuffle folder · Hindi",
+                    text = "1.14 · audio browsers · gapless · crossfade · loudness norm · PIN · cache · lyrics",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
@@ -590,6 +726,69 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
         }
+    }
+
+
+    if (pinDialog) {
+        AlertDialog(
+            onDismissRequest = { pinDialog = false },
+            containerColor = ForgeGraphite,
+            title = { Text(stringResource(R.string.pin_set), color = Color.White) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = pinDraft,
+                        onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) pinDraft = it },
+                        label = { Text(stringResource(R.string.pin_label)) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ForgeAccent,
+                            unfocusedBorderColor = ForgeMuted.copy(alpha = 0.4f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = ForgeAccent,
+                        ),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = pinConfirm,
+                        onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) pinConfirm = it },
+                        label = { Text(stringResource(R.string.pin_confirm)) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ForgeAccent,
+                            unfocusedBorderColor = ForgeMuted.copy(alpha = 0.4f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            cursorColor = ForgeAccent,
+                        ),
+                    )
+                    pinError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        when {
+                            pinDraft.length !in 4..8 -> pinError = "4–8 digits"
+                            pinDraft != pinConfirm -> pinError = context.getString(R.string.pin_mismatch)
+                            else -> {
+                                pinStore.setPin(pinDraft)
+                                pinDialog = false
+                            }
+                        }
+                    }
+                }) { Text(stringResource(R.string.action_save), color = ForgeAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pinDialog = false }) {
+                    Text(stringResource(R.string.action_cancel), color = ForgeMuted)
+                }
+            },
+        )
     }
 
     if (clearDialog) {

@@ -12,7 +12,12 @@ import com.gketch.forge.data.ForgePlaylist
 import com.gketch.forge.data.HiddenFolder
 import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.LibrarySort
+import com.gketch.forge.data.AudioBrowseGroup
+import com.gketch.forge.data.AudioBrowseMode
 import com.gketch.forge.data.MediaFolder
+import com.gketch.forge.data.groupAudioByAlbum
+import com.gketch.forge.data.groupAudioByArtist
+import com.gketch.forge.data.groupAudioByGenre
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.DeleteMediaResult
 import com.gketch.forge.data.MediaRepository
@@ -70,6 +75,9 @@ data class LibraryUiState(
     val watchedKeys: Set<String> = emptySet(),
     val watchedFilter: WatchedFilter = WatchedFilter.ALL,
     val minClipSeconds: Int = 0,
+    val audioBrowseMode: AudioBrowseMode = AudioBrowseMode.SONGS,
+    val audioGroups: List<AudioBrowseGroup> = emptyList(),
+    val selectedAudioGroup: AudioBrowseGroup? = null,
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -129,6 +137,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         val st = _state.value
         if (st.selecting) {
             clearSelection()
+            return true
+        }
+        if (st.tab == LibraryTab.AUDIO && st.selectedAudioGroup != null) {
+            closeAudioGroup()
             return true
         }
         if (st.tab == LibraryTab.BROWSE && st.selectedFolder != null) {
@@ -267,6 +279,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _state.update {
                     val snap = resumeStore.positionSnapshot()
                     val continuing = resumeStore.continueWatching(items, snap, videosOnly = true)
+                    val groups = recomputeAudioGroups(items, it.audioBrowseMode, it.query)
+                    val sel = it.selectedAudioGroup?.let { g -> groups.find { x -> x.key == g.key } }
                     it.copy(
                         items = items,
                         filtered = applyFilterAndSort(items, it.filter, it.sort),
@@ -275,6 +289,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         folderItems = filterFolderItems(folderAll, it.query),
                         continueWatching = continuing,
                         loading = false,
+                        audioGroups = groups,
+                        selectedAudioGroup = sel,
                     )
                 }
             } catch (e: Exception) {
@@ -314,6 +330,28 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+
+    private fun recomputeAudioGroups(
+        items: List<ForgeMediaItem>,
+        mode: AudioBrowseMode,
+        query: String,
+    ): List<AudioBrowseGroup> {
+        val audio = items.filter { !it.isVideo }
+        val q = query.trim()
+        val filtered = if (q.isEmpty()) audio else audio.filter {
+            it.title.contains(q, ignoreCase = true) ||
+                it.artist.contains(q, ignoreCase = true) ||
+                it.album.contains(q, ignoreCase = true) ||
+                it.genre.contains(q, ignoreCase = true)
+        }
+        return when (mode) {
+            AudioBrowseMode.SONGS -> emptyList()
+            AudioBrowseMode.ALBUMS -> groupAudioByAlbum(filtered)
+            AudioBrowseMode.ARTISTS -> groupAudioByArtist(filtered)
+            AudioBrowseMode.GENRES -> groupAudioByGenre(filtered)
+        }
+    }
+
     fun setTab(tab: LibraryTab) {
         viewModelScope.launch { settingsStore.setLastLibraryTab(tab.name) }
         _state.update {
@@ -322,14 +360,39 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 LibraryTab.AUDIO -> LibraryFilter.AUDIO
                 else -> it.filter
             }
+            val mode = if (tab == LibraryTab.AUDIO) it.audioBrowseMode else AudioBrowseMode.SONGS
             it.copy(
                 tab = tab,
                 filter = filter,
-                filtered = applyFilterAndSort(it.items, filter, it.sort),
+                filtered = applyFilterAndSort(
+                    it.items, filter, it.sort,
+                    it.watchedKeys, it.watchedFilter, it.minClipSeconds,
+                ),
                 selecting = false,
                 selectedKeys = emptySet(),
+                selectedAudioGroup = if (tab == LibraryTab.AUDIO) it.selectedAudioGroup else null,
+                audioGroups = if (tab == LibraryTab.AUDIO) recomputeAudioGroups(it.items, mode, it.query) else emptyList(),
             )
         }
+    }
+
+
+    fun setAudioBrowseMode(mode: AudioBrowseMode) {
+        _state.update {
+            it.copy(
+                audioBrowseMode = mode,
+                selectedAudioGroup = null,
+                audioGroups = recomputeAudioGroups(it.items, mode, it.query),
+            )
+        }
+    }
+
+    fun openAudioGroup(group: AudioBrowseGroup) {
+        _state.update { it.copy(selectedAudioGroup = group) }
+    }
+
+    fun closeAudioGroup() {
+        _state.update { it.copy(selectedAudioGroup = null) }
     }
 
     fun removeRecent(item: ForgeMediaItem) {

@@ -56,7 +56,11 @@ class RecentStore(context: Context) {
                         .put("mimeType", item.mimeType)
                         .put("kind", item.kind.name)
                         .put("dateAdded", item.dateAdded)
-                        .put("albumArtUri", item.albumArtUri?.toString()),
+                        .put("albumArtUri", item.albumArtUri?.toString())
+                        .put("artist", item.artist)
+                        .put("album", item.album)
+                        .put("genre", item.genre)
+                        .put("albumId", item.albumId),
                 )
             }
             return arr.toString()
@@ -82,6 +86,10 @@ class RecentStore(context: Context) {
                                 }.getOrDefault(MediaKind.VIDEO),
                                 dateAdded = o.optLong("dateAdded"),
                                 albumArtUri = art?.let { Uri.parse(it) },
+                                artist = o.optString("artist", ""),
+                                album = o.optString("album", ""),
+                                genre = o.optString("genre", ""),
+                                albumId = o.optLong("albumId"),
                             ),
                         )
                     }

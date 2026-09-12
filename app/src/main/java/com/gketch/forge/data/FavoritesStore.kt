@@ -105,6 +105,10 @@ class FavoritesStore(context: Context) {
                 .put("bucketId", item.bucketId)
                 .put("bucketName", item.bucketName)
                 .put("relativePath", item.relativePath)
+                .put("artist", item.artist)
+                .put("album", item.album)
+                .put("genre", item.genre)
+                .put("albumId", item.albumId)
 
         fun itemFromJson(o: JSONObject): ForgeMediaItem {
             val art = o.optString("albumArtUri", "").takeIf { it.isNotBlank() }
@@ -123,6 +127,10 @@ class FavoritesStore(context: Context) {
                 bucketId = o.optLong("bucketId"),
                 bucketName = o.optString("bucketName", ""),
                 relativePath = o.optString("relativePath", ""),
+                artist = o.optString("artist", ""),
+                album = o.optString("album", ""),
+                genre = o.optString("genre", ""),
+                albumId = o.optLong("albumId"),
             )
         }
     }

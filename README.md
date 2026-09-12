@@ -89,6 +89,14 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Random (shuffle) play all items in current folder
 - Hindi UI strings (`values-hi`) + in-app language toggle (System / English / Hindi)
 
+- Audio browsers under Audio tab: Songs / Albums / Artists / Genres (MediaStore); drill-in track lists
+- Gapless playback for consecutive audio (Media3 encoder delay/padding)
+- Optional audio crossfade (0 / 1s / 2s / 3s soft volume ramp)
+- Loudness normalize toggle (LoudnessEnhancer, safe cap with volume boost)
+- Optional PIN lock on open (+ biometric when available); gates Settings & Playlists
+- Settings: clear image/thumb cache; rough library counts / storage hint
+- Lyrics panel: embedded / MediaMetadata description / polished empty state (.lrc best-effort)
+
 ## Build
 
 ```bash
@@ -106,4 +114,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.13.0 (14)
+- **version:** 1.14.0 (15)

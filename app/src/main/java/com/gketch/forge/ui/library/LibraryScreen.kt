@@ -120,6 +120,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gketch.forge.data.ContinueWatchItem
+import com.gketch.forge.data.AudioBrowseMode
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.ForgePlaylist
 import com.gketch.forge.data.LibrarySort
@@ -151,6 +152,9 @@ fun LibraryScreen(
     onOpenHistory: () -> Unit = {},
     onRequestPermission: () -> Unit,
     onExpandPlayer: () -> Unit = {},
+    pinLockEnabled: Boolean = false,
+    onGatePlaylists: () -> Boolean = { false },
+    openPlaylistsTick: Int = 0,
     viewModel: LibraryViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -179,6 +183,11 @@ fun LibraryScreen(
     val videoGridState = rememberKeyedLazyGridState("lib:VIDEO:grid", viewModel)
     val audioListState = rememberKeyedLazyListState("lib:AUDIO:list", viewModel)
     val audioGridState = rememberKeyedLazyGridState("lib:AUDIO:grid", viewModel)
+    val audioGroupsListState = rememberKeyedLazyListState("lib:AUDIO:groups", viewModel)
+    val audioGroupTracksState = rememberKeyedLazyListState(
+        "lib:AUDIO:group:${state.selectedAudioGroup?.key ?: "none"}",
+        viewModel,
+    )
     val mediaListState = if (state.tab == LibraryTab.AUDIO) audioListState else videoListState
     val mediaGridState = if (state.tab == LibraryTab.AUDIO) audioGridState else videoGridState
     val browseListState = rememberKeyedLazyListState("browse", viewModel)
@@ -235,6 +244,9 @@ fun LibraryScreen(
     LaunchedEffect(permitted) {
         if (permitted) viewModel.refresh()
     }
+    LaunchedEffect(openPlaylistsTick) {
+        if (openPlaylistsTick > 0) viewModel.setTab(LibraryTab.PLAYLISTS)
+    }
 
     LaunchedEffect(m3uMessage) {
         val msg = m3uMessage ?: return@LaunchedEffect
@@ -276,7 +288,13 @@ fun LibraryScreen(
                     items.forEach { (tab, icon, label) ->
                         NavigationBarItem(
                             selected = state.tab == tab,
-                            onClick = { viewModel.setTab(tab) },
+                            onClick = {
+                                if (tab == LibraryTab.PLAYLISTS && pinLockEnabled && onGatePlaylists()) {
+                                    // Parent shows PIN gate
+                                } else {
+                                    viewModel.setTab(tab)
+                                }
+                            },
                             icon = { Icon(icon, contentDescription = label) },
                             label = { Text(label) },
                             colors = NavigationBarItemDefaults.colors(
@@ -460,7 +478,8 @@ fun LibraryScreen(
                     shape = RoundedCornerShape(14.dp),
                     colors = fieldColors(),
                 )
-                if (state.tab == LibraryTab.VIDEO || state.tab == LibraryTab.AUDIO ||
+                if (state.tab == LibraryTab.VIDEO ||
+                    (state.tab == LibraryTab.AUDIO && state.audioBrowseMode == AudioBrowseMode.SONGS) ||
                     (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
                 ) {
                     Spacer(Modifier.height(8.dp))
@@ -486,6 +505,13 @@ fun LibraryScreen(
                         }
                     }
                 }
+                if (state.tab == LibraryTab.AUDIO && state.selectedAudioGroup == null) {
+                    Spacer(Modifier.height(8.dp))
+                    AudioBrowseModeChips(
+                        mode = state.audioBrowseMode,
+                        onMode = viewModel::setAudioBrowseMode,
+                    )
+                }
                 if (!permitted) {
                     Spacer(Modifier.height(6.dp))
                     TextButton(onClick = onRequestPermission) {
@@ -496,7 +522,7 @@ fun LibraryScreen(
         },
     ) { padding ->
         when (state.tab) {
-            LibraryTab.VIDEO, LibraryTab.AUDIO -> LibraryBody(
+            LibraryTab.VIDEO -> LibraryBody(
                 state = state,
                 permitted = permitted,
                 padding = padding,
@@ -512,6 +538,64 @@ fun LibraryScreen(
                 onDeleteMedia = { deleteCandidate = it },
                 onToggleWatched = viewModel::toggleWatched,
             )
+            LibraryTab.AUDIO -> {
+                val group = state.selectedAudioGroup
+                when {
+                    group != null -> {
+                        Column(Modifier.fillMaxSize().padding(padding)) {
+                            AudioGroupTracksHeader(
+                                group = group,
+                                onBack = viewModel::closeAudioGroup,
+                                onPlayAll = { onPlay(group.tracks, 0) },
+                            )
+                            LazyColumn(
+                                state = audioGroupTracksState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(16.dp),
+                            ) {
+                                items(group.tracks, key = { it.stableKey() }) { item ->
+                                    val idx = group.tracks.indexOf(item)
+                                    MediaRow(
+                                        item = item,
+                                        favorite = state.favoriteUris.contains(item.uri.toString()),
+                                        watched = false,
+                                        selected = false,
+                                        selecting = false,
+                                        onClick = { onPlay(group.tracks, idx) },
+                                        onLongClick = {},
+                                        onToggleFavorite = { viewModel.toggleFavorite(item) },
+                                        onAddToPlaylist = { addToPlaylistItem = item },
+                                        onToggleWatched = {},
+                                        onDelete = { deleteCandidate = item },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    state.audioBrowseMode != AudioBrowseMode.SONGS -> AudioGroupsList(
+                        groups = state.audioGroups,
+                        listState = audioGroupsListState,
+                        contentPadding = padding,
+                        onOpen = viewModel::openAudioGroup,
+                    )
+                    else -> LibraryBody(
+                        state = state,
+                        permitted = permitted,
+                        padding = padding,
+                        listState = mediaListState,
+                        gridState = mediaGridState,
+                        onPlay = onPlay,
+                        onToggleFavorite = viewModel::toggleFavorite,
+                        onAddToPlaylist = { addToPlaylistItem = it },
+                        onToggleSelect = viewModel::toggleSelected,
+                        onBeginSelect = viewModel::beginSelection,
+                        onRemoveRecent = viewModel::removeRecent,
+                        onRemoveContinue = viewModel::removeContinueWatching,
+                        onDeleteMedia = { deleteCandidate = it },
+                        onToggleWatched = viewModel::toggleWatched,
+                    )
+                }
+            }
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
                 padding = padding,
@@ -1558,9 +1642,20 @@ private fun MediaRow(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "${if (item.isVideo) "Video" else "Audio"} · ${formatDuration(item.durationMs)}",
+                text = buildString {
+                    if (!item.isVideo && item.artist.isNotBlank()) {
+                        append(item.artist)
+                        append(" · ")
+                    } else {
+                        append(if (item.isVideo) "Video" else "Audio")
+                        append(" · ")
+                    }
+                    append(formatDuration(item.durationMs))
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = ForgeMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         IconButton(onClick = onToggleFavorite) {

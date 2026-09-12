@@ -1,5 +1,7 @@
 package com.gketch.forge.ui.player
 
+import com.gketch.forge.R
+
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -105,6 +108,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -148,7 +152,10 @@ import com.gketch.forge.data.SubtitleColor
 import com.gketch.forge.data.SubtitlePosition
 import com.gketch.forge.data.BookmarkStore
 import com.gketch.forge.data.MediaBookmark
+import com.gketch.forge.playback.ForgeCrossfade
 import com.gketch.forge.playback.ForgeLoudness
+import com.gketch.forge.data.LyricsRepository
+import com.gketch.forge.data.LyricsResult
 import com.gketch.forge.playback.ForgeEngine
 import com.gketch.forge.playback.ForgePlayerPrefsStore
 import com.gketch.forge.data.MediaKind
@@ -180,7 +187,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime, VideoColor, AudioBalance, Lyrics }
 
 private data class MediaChapter(val title: String, val startMs: Long)
 
@@ -271,6 +278,8 @@ fun PlayerScreen(
     var videoHeight by remember { mutableIntStateOf(0) }
     var videoTrackLabels by remember { mutableStateOf<List<String>>(emptyList()) }
     var chapters by remember { mutableStateOf<List<MediaChapter>>(emptyList()) }
+    var lyricsResult by remember { mutableStateOf<LyricsResult?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
     var bassOn by remember { mutableStateOf(ForgeAudioFx.bassEnabled) }
     var virtOn by remember { mutableStateOf(ForgeAudioFx.virtualizerEnabled) }
     var videoBrightness by remember { mutableFloatStateOf(ForgeVideoColor.current.brightness) }
@@ -319,6 +328,8 @@ fun PlayerScreen(
             subtitleBackground = s.subtitleBackground
             subtitlePosition = s.subtitlePosition
             ForgeEngine.setPauseAtEndOfMediaItems(!s.autoplayNext)
+            ForgeCrossfade.setDurationSec(s.crossfade.seconds)
+            ForgeLoudness.setNormalizeEnabled(s.loudnessNormalize)
             if (!appliedDefaultSpeed) {
                 appliedDefaultSpeed = true
                 speed = s.defaultPlaybackSpeed
@@ -407,6 +418,8 @@ fun PlayerScreen(
                     abLoopEnabled = false
                     displayedCues = emptyList()
                     chapters = emptyList()
+                    lyricsResult = null
+                    ForgeCrossfade.onMediaItemTransition(player)
                     // Keep play-as-audio mode across queue items (user toggle).
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in playQueue.indices) {
@@ -552,7 +565,7 @@ fun PlayerScreen(
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(item.title.ifBlank { "Media" })
-                        .setArtist("Forge")
+                        .setArtist(item.artist.ifBlank { "Forge" })
                         .setArtworkUri(item.albumArtUri)
                         .setIsPlayable(true)
                         .build(),
@@ -636,9 +649,22 @@ fun PlayerScreen(
                     autoMarkedUri = uri
                     watchedStore.markWatched(uri)
                 }
+                val sleepFading = sleepDeadlineMs > 0L && appSettings.sleepFadeEnabled
+                ForgeCrossfade.tick(player, positionMs, durationMs, sleepFading)
             }
             delay(100)
         }
+    }
+
+    LaunchedEffect(index, playQueue) {
+        val item = playQueue.getOrNull(index)
+        lyricsLoading = true
+        lyricsResult = null
+        val embeddedDesc = controller?.mediaMetadata?.description
+        val fromMeta = LyricsRepository.fromMedia3Description(embeddedDesc)
+        val loaded = LyricsRepository.load(context, item) ?: fromMeta
+        lyricsResult = loaded
+        lyricsLoading = false
     }
 
     LaunchedEffect(panel) {
@@ -1050,6 +1076,10 @@ fun PlayerScreen(
                     moreMenu = false
                     panel = Panel.AudioBalance
                 },
+                onLyrics = {
+                    moreMenu = false
+                    panel = Panel.Lyrics
+                },
                 onPlayAsAudio = {
                     moreMenu = false
                     val next = !playAsAudio
@@ -1072,6 +1102,14 @@ fun PlayerScreen(
                 showAspect = isVideoSurface,
                 showSnapshot = isVideoSurface,
                 showChapters = chapters.isNotEmpty(),
+            )
+        }
+
+        if (panel == Panel.Lyrics) {
+            LyricsDialog(
+                lyrics = lyricsResult,
+                loading = lyricsLoading,
+                onDismiss = { panel = Panel.None },
             )
         }
 
@@ -1435,7 +1473,7 @@ fun PlayerScreen(
                         .setMediaMetadata(
                             MediaMetadata.Builder()
                                 .setTitle(item.title)
-                                .setArtist("Forge")
+                                .setArtist(item.artist.ifBlank { "Forge" })
                                 .setArtworkUri(item.albumArtUri)
                                 .setIsPlayable(true)
                                 .build(),
@@ -1662,6 +1700,7 @@ private fun PlayerTopBar(
     onJumpToTime: () -> Unit,
     onVideoColor: () -> Unit,
     onAudioBalance: () -> Unit,
+    onLyrics: () -> Unit,
     onPlayAsAudio: () -> Unit,
     playAsAudio: Boolean,
     showPlayAsAudio: Boolean,
@@ -1873,6 +1912,13 @@ private fun PlayerTopBar(
                     onClick = onAudioBalance,
                     leadingIcon = {
                         Icon(Icons.Rounded.SurroundSound, null, tint = ForgeAccent)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.lyrics), color = Color.White) },
+                    onClick = onLyrics,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ClosedCaption, null, tint = ForgeAccent)
                     },
                 )
                 if (showPlayAsAudio) {
@@ -2858,4 +2904,54 @@ private fun setWindowBrightness(activity: Activity?, fraction: Float) {
     val lp = window.attributes
     lp.screenBrightness = fraction.coerceIn(0.01f, 1f)
     window.attributes = lp
+}
+
+
+@Composable
+private fun LyricsDialog(
+    lyrics: LyricsResult?,
+    loading: Boolean,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text(stringResource(R.string.lyrics), color = Color.White) },
+        text = {
+            when {
+                loading -> Text("…", color = ForgeMuted)
+                lyrics == null || lyrics.text.isBlank() -> {
+                    Column {
+                        Text(stringResource(R.string.lyrics_empty), color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.lyrics_empty_sub), color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                else -> {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(R.string.lyrics_source, lyrics.source),
+                            color = ForgeMuted,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            lyrics.text,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp)
+                                .verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_done), color = ForgeAccent)
+            }
+        },
+    )
 }

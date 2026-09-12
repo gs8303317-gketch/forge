@@ -55,6 +55,12 @@ enum class SleepEndAction(val label: String) {
     STOP("Stop"),
 }
 
+enum class GestureSensitivity(val label: String, val multiplier: Float) {
+    LOW("Low", 0.55f),
+    NORMAL("Normal", 1.0f),
+    HIGH("High", 1.65f),
+}
+
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
@@ -70,6 +76,7 @@ data class AppSettings(
     val sleepEndAction: SleepEndAction = SleepEndAction.PAUSE,
     val defaultPlaybackSpeed: Float = 1.0f,
     val lastLibraryTab: String = "VIDEO",
+    val gestureSensitivity: GestureSensitivity = GestureSensitivity.NORMAL,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -86,6 +93,7 @@ data class AppSettings(
         .put("sleepEndAction", sleepEndAction.name)
         .put("defaultPlaybackSpeed", defaultPlaybackSpeed.toDouble())
         .put("lastLibraryTab", lastLibraryTab)
+        .put("gestureSensitivity", gestureSensitivity.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -131,6 +139,9 @@ class AppSettingsStore(context: Context) {
                 listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f).minBy { kotlin.math.abs(it - s) }
             },
             lastLibraryTab = p[KEY_LAST_TAB] ?: "VIDEO",
+            gestureSensitivity = runCatching {
+                GestureSensitivity.valueOf(p[KEY_GESTURE_SENS] ?: GestureSensitivity.NORMAL.name)
+            }.getOrDefault(GestureSensitivity.NORMAL),
         )
     }
 
@@ -199,6 +210,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_LAST_TAB] = value }
     }
 
+    suspend fun setGestureSensitivity(value: GestureSensitivity) {
+        store.edit { it[KEY_GESTURE_SENS] = value.name }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -215,6 +230,7 @@ class AppSettingsStore(context: Context) {
             if (o.has("sleepEndAction")) p[KEY_SLEEP_END] = o.optString("sleepEndAction")
             if (o.has("defaultPlaybackSpeed")) p[KEY_DEFAULT_SPEED] = o.optDouble("defaultPlaybackSpeed", 1.0).toFloat()
             if (o.has("lastLibraryTab")) p[KEY_LAST_TAB] = o.optString("lastLibraryTab", "VIDEO")
+            if (o.has("gestureSensitivity")) p[KEY_GESTURE_SENS] = o.optString("gestureSensitivity")
         }
     }
 
@@ -233,6 +249,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_SLEEP_END = stringPreferencesKey("sleep_end_action")
         private val KEY_DEFAULT_SPEED = floatPreferencesKey("default_playback_speed")
         private val KEY_LAST_TAB = stringPreferencesKey("last_library_tab")
+        private val KEY_GESTURE_SENS = stringPreferencesKey("gesture_sensitivity")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)
         val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)

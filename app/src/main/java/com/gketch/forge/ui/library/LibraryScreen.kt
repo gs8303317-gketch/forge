@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -153,6 +154,8 @@ fun LibraryScreen(
     var addToPlaylistItem by remember { mutableStateOf<ForgeMediaItem?>(null) }
     var addSelectedToPlaylist by remember { mutableStateOf(false) }
     var hideFolder by remember { mutableStateOf<MediaFolder?>(null) }
+    var deleteCandidate by remember { mutableStateOf<ForgeMediaItem?>(null) }
+    var awaitingSystemDelete by remember { mutableStateOf<ForgeMediaItem?>(null) }
     var exportPlaylist by remember { mutableStateOf<ForgePlaylist?>(null) }
     var m3uMessage by remember { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -207,6 +210,16 @@ fun LibraryScreen(
         exportPlaylist = null
         if (uri != null && pl != null) {
             viewModel.exportM3u(pl.id, uri) { msg -> m3uMessage = msg }
+        }
+    }
+    val deleteConfirmLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val item = awaitingSystemDelete
+        awaitingSystemDelete = null
+        if (result.resultCode == Activity.RESULT_OK && item != null) {
+            viewModel.onDeleteConfirmed(item)
+            snackScopeMsg = "Deleted “${item.title}”"
         }
     }
 
@@ -426,7 +439,12 @@ fun LibraryScreen(
                     onValueChange = viewModel::onQueryChange,
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("Search media…") },
+                    placeholder = {
+                        Text(
+                            if (state.selectedFolder != null) "Search in folder…"
+                            else "Search media…",
+                        )
+                    },
                     leadingIcon = {
                         Icon(Icons.Rounded.Search, contentDescription = null, tint = ForgeMuted)
                     },
@@ -456,6 +474,7 @@ fun LibraryScreen(
                 onBeginSelect = viewModel::beginSelection,
                 onRemoveRecent = viewModel::removeRecent,
                 onRemoveContinue = viewModel::removeContinueWatching,
+                onDeleteMedia = { deleteCandidate = it },
             )
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
@@ -475,6 +494,7 @@ fun LibraryScreen(
                 onDeleteStream = viewModel::removeStream,
                 onToggleSelect = viewModel::toggleSelected,
                 onBeginSelect = viewModel::beginSelection,
+                onDeleteMedia = { deleteCandidate = it },
             )
             LibraryTab.PLAYLISTS -> PlaylistsBody(
                 state = state,
@@ -626,6 +646,50 @@ fun LibraryScreen(
             },
         )
     }
+    deleteCandidate?.let { item ->
+        AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            containerColor = ForgeGraphite,
+            title = { Text("Delete media", color = Color.White) },
+            text = {
+                Text(
+                    "Delete “${item.title}” from this device? This cannot be undone.",
+                    color = ForgeMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            when (val result = viewModel.deleteMedia(item)) {
+                                is com.gketch.forge.data.DeleteMediaResult.Deleted -> {
+                                    deleteCandidate = null
+                                    snackScopeMsg = "Deleted “${item.title}”"
+                                }
+                                is com.gketch.forge.data.DeleteMediaResult.NeedUserConfirm -> {
+                                    awaitingSystemDelete = item
+                                    deleteCandidate = null
+                                    deleteConfirmLauncher.launch(
+                                        IntentSenderRequest.Builder(result.intentSender).build(),
+                                    )
+                                }
+                                is com.gketch.forge.data.DeleteMediaResult.Failed -> {
+                                    deleteCandidate = null
+                                    snackScopeMsg = result.message
+                                }
+                            }
+                        }
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }) {
+                    Text("Cancel", color = ForgeMuted)
+                }
+            },
+        )
+    }
+
     hideFolder?.let { folder ->
         AlertDialog(
             onDismissRequest = { hideFolder = null },
@@ -688,6 +752,7 @@ private fun LibraryBody(
     onBeginSelect: (ForgeMediaItem) -> Unit,
     onRemoveRecent: (ForgeMediaItem) -> Unit,
     onRemoveContinue: (ForgeMediaItem) -> Unit,
+    onDeleteMedia: (ForgeMediaItem) -> Unit = {},
 ) {
     val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
@@ -762,6 +827,7 @@ private fun LibraryBody(
                         onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
+                        onDelete = { onDeleteMedia(item) },
                     )
                 }
             }
@@ -813,6 +879,7 @@ private fun LibraryBody(
                         onLongClick = { onBeginSelect(item) },
                         onToggleFavorite = { onToggleFavorite(item) },
                         onAddToPlaylist = { onAddToPlaylist(item) },
+                        onDelete = { onDeleteMedia(item) },
                     )
                 }
             }
@@ -839,6 +906,7 @@ private fun FoldersBody(
     onDeleteStream: (String) -> Unit,
     onToggleSelect: (ForgeMediaItem) -> Unit,
     onBeginSelect: (ForgeMediaItem) -> Unit,
+    onDeleteMedia: (ForgeMediaItem) -> Unit = {},
 ) {
     val folder = state.selectedFolder
     if (folder == null) {
@@ -913,7 +981,12 @@ private fun FoldersBody(
                 }
                 Column(Modifier.weight(1f)) {
                     Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
-                    Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (state.query.isBlank()) "${folder.itemCount} items"
+                        else "${state.folderItems.size} of ${state.folderItemsAll.size} items",
+                        color = ForgeMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 IconButton(
                     onClick = { if (state.folderItems.isNotEmpty()) onPlay(state.folderItems, 0) },
@@ -942,6 +1015,7 @@ private fun FoldersBody(
                             onLongClick = { onBeginSelect(item) },
                             onToggleFavorite = { onToggleFavorite(item) },
                             onAddToPlaylist = { onAddToPlaylist(item) },
+                            onDelete = { onDeleteMedia(item) },
                         )
                     }
                 }
@@ -967,6 +1041,7 @@ private fun FoldersBody(
                             onLongClick = { onBeginSelect(item) },
                             onToggleFavorite = { onToggleFavorite(item) },
                             onAddToPlaylist = { onAddToPlaylist(item) },
+                            onDelete = { onDeleteMedia(item) },
                         )
                     }
                 }
@@ -1281,6 +1356,7 @@ private fun MediaGridCard(
     onLongClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onDelete: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     Column(
@@ -1289,7 +1365,10 @@ private fun MediaGridCard(
             .background(if (selected) ForgeSurfaceVariant else ForgeGraphite)
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick,
+                onLongClick = {
+                    onLongClick()
+                    if (!selecting) menu = true
+                },
             )
             .padding(8.dp),
     ) {
@@ -1323,6 +1402,12 @@ private fun MediaGridCard(
                     text = { Text("Add to playlist", color = Color.White) },
                     onClick = { menu = false; onAddToPlaylist() },
                 )
+                if (onDelete != null) {
+                    DropdownMenuItem(
+                        text = { Text("Delete from device", color = Color.White) },
+                        onClick = { menu = false; onDelete() },
+                    )
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1354,6 +1439,7 @@ private fun MediaRow(
     onToggleFavorite: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onRemove: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -1404,6 +1490,12 @@ private fun MediaRow(
                 DropdownMenuItem(
                     text = { Text("Remove from playlist", color = Color.White) },
                     onClick = { menu = false; onRemove() },
+                )
+            }
+            if (onDelete != null) {
+                DropdownMenuItem(
+                    text = { Text("Delete from device", color = Color.White) },
+                    onClick = { menu = false; onDelete() },
                 )
             }
         }

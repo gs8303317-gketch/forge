@@ -71,6 +71,7 @@ fun PlayerGestureLayer(
     controlsVisible: Boolean = false,
     excludeTopPx: Float = 0f,
     excludeBottomPx: Float = 0f,
+    sensitivityMultiplier: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     val durationState = rememberUpdatedState(durationMs)
@@ -103,6 +104,7 @@ fun PlayerGestureLayer(
     }
 
     val enabledState = rememberUpdatedState(gesturesEnabled)
+    val sensState = rememberUpdatedState(sensitivityMultiplier)
 
     fun inChrome(y: Float, height: Float): Boolean {
         val top = topExclude.value
@@ -160,7 +162,7 @@ fun PlayerGestureLayer(
                     },
                 )
             }
-            .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx) {
+            .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx, sensitivityMultiplier) {
                 if (!gesturesEnabled) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
@@ -200,18 +202,21 @@ fun PlayerGestureLayer(
                         }
                         when (classified) {
                             GestureKind.Seek -> {
+                                val sens = sensState.value.coerceIn(0.25f, 3f)
                                 val window = if (dur > 0L) minOf(dur, 180_000L).toFloat() else 180_000f
-                                val deltaMs = ((total.x / size.width) * window).roundToLong()
+                                val deltaMs = ((total.x / size.width) * window * sens).roundToLong()
                                 val target = (startPos + deltaMs).coerceIn(0L, if (dur > 0L) dur else Long.MAX_VALUE)
                                 previewMs = target
                             }
                             GestureKind.Volume -> {
-                                val next = (startVol - total.y / size.height).coerceIn(0f, 1f)
+                                val sens = sensState.value.coerceIn(0.25f, 3f)
+                                val next = (startVol - (total.y / size.height) * sens).coerceIn(0f, 1f)
                                 barFraction = next
                                 volCb.value(next)
                             }
                             GestureKind.Brightness -> {
-                                val next = (startBrit - total.y / size.height).coerceIn(0f, 1f)
+                                val sens = sensState.value.coerceIn(0.25f, 3f)
+                                val next = (startBrit - (total.y / size.height) * sens).coerceIn(0f, 1f)
                                 barFraction = next
                                 britCb.value(next)
                             }

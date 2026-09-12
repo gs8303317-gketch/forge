@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.gketch.forge.BuildConfig
 import com.gketch.forge.data.AccentPreset
 import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.GestureSensitivity
 import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.BackupStore
 import com.gketch.forge.data.HiddenFolder
@@ -210,6 +211,28 @@ fun SettingsScreen(onBack: () -> Unit) {
                         )
                     }
                 }
+                Spacer(Modifier.height(14.dp))
+                Text("Gesture sensitivity", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GestureSensitivity.entries.forEach { sens ->
+                        FilterChip(
+                            selected = app.gestureSensitivity == sens,
+                            onClick = { scope.launch { appStore.setGestureSensitivity(sens) } },
+                            label = { Text(sens.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Brightness, volume, and seek swipe strength",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             SettingsCard(title = "Playback engine") {

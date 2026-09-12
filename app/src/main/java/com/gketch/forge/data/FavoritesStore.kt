@@ -36,6 +36,13 @@ class FavoritesStore(context: Context) {
         return nowFavorite
     }
 
+    suspend fun remove(uri: Uri) {
+        store.edit { prefs ->
+            val current = decode(prefs[KEY] ?: "[]").filterNot { it.uri == uri }
+            prefs[KEY] = encode(current)
+        }
+    }
+
     suspend fun addAll(items: List<ForgeMediaItem>) {
         if (items.isEmpty()) return
         store.edit { prefs ->

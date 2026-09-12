@@ -375,3 +375,98 @@ fun guessContainer(mime: String, title: String): String {
         else -> "—"
     }
 }
+
+/** Parse hh:mm:ss, mm:ss, or plain seconds into milliseconds. */
+fun parseJumpTimeToMs(raw: String): Long? {
+    val t = raw.trim()
+    if (t.isEmpty()) return null
+    if (t.all { it.isDigit() }) {
+        return t.toLongOrNull()?.times(1000L)?.takeIf { it >= 0L }
+    }
+    val parts = t.split(':')
+    if (parts.any { it.isEmpty() || !it.all { ch -> ch.isDigit() } }) return null
+    val nums = parts.map { it.toLongOrNull() ?: return null }
+    val seconds = when (nums.size) {
+        1 -> nums[0]
+        2 -> nums[0] * 60 + nums[1]
+        3 -> nums[0] * 3600 + nums[1] * 60 + nums[2]
+        else -> return null
+    }
+    if (seconds < 0L) return null
+    return seconds * 1000L
+}
+
+@Composable
+fun JumpToTimeDialog(
+    durationMs: Long,
+    positionMs: Long,
+    onDismiss: () -> Unit,
+    onSeek: (Long) -> Unit,
+) {
+    var text by remember {
+        mutableStateOf(
+            formatDuration(positionMs).let { if (it.count { c -> c == ':' } == 1) "0:$it" else it },
+        )
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ForgeGraphite,
+        title = { Text("Jump to time", color = Color.White) },
+        text = {
+            Column {
+                Text(
+                    "Enter hh:mm:ss, mm:ss, or seconds",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        error = null
+                    },
+                    singleLine = true,
+                    placeholder = { Text("00:01:30") },
+                    isError = error != null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = ForgeAccent,
+                        unfocusedBorderColor = ForgeMuted.copy(alpha = 0.4f),
+                        cursorColor = ForgeAccent,
+                        focusedContainerColor = ForgeBlack,
+                        unfocusedContainerColor = ForgeBlack,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                if (durationMs > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Duration ${formatDuration(durationMs)}", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val ms = parseJumpTimeToMs(text)
+                    if (ms == null) {
+                        error = "Invalid time"
+                        return@TextButton
+                    }
+                    val capped = if (durationMs > 0L) ms.coerceIn(0L, durationMs) else ms.coerceAtLeast(0L)
+                    onSeek(capped)
+                    onDismiss()
+                },
+            ) { Text("Go", color = ForgeAccent) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = ForgeMuted) }
+        },
+    )
+}

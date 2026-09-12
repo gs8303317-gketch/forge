@@ -47,6 +47,8 @@ import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
@@ -64,6 +66,8 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Loop
+import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
@@ -171,7 +175,7 @@ private enum class AspectMode(val label: String, val resizeMode: Int) {
     ZOOM("Zoom", AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
 }
 
-private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters }
+private enum class Panel { None, Speed, Aspect, Sleep, Subtitle, Audio, Quality, Equalizer, Orientation, AbLoop, MediaInfo, Bookmarks, VolumeBoost, SubDelay, AudioDelay, Queue, Chapters, JumpToTime }
 
 private data class MediaChapter(val title: String, val startMs: Long)
 
@@ -264,6 +268,8 @@ fun PlayerScreen(
     var bassOn by remember { mutableStateOf(ForgeAudioFx.bassEnabled) }
     var virtOn by remember { mutableStateOf(ForgeAudioFx.virtualizerEnabled) }
     var sleepBaseVolume by remember { mutableFloatStateOf(1f) }
+    var playAsAudio by remember { mutableStateOf(false) }
+    var frameStepAvailable by remember { mutableStateOf(true) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -320,9 +326,20 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(playAsAudio, isPlaying) {
+        val window = activity?.window ?: return@LaunchedEffect
+        if (playAsAudio) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     DisposableEffect(activity) {
         val window = activity?.window
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (!playAsAudio) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         val insetsController = window?.let { w ->
             runCatching {
                 WindowCompat.getInsetsController(w, w.decorView).apply {
@@ -378,6 +395,7 @@ fun PlayerScreen(
                     abLoopEnabled = false
                     displayedCues = emptyList()
                     chapters = emptyList()
+                    // Keep play-as-audio mode across queue items (user toggle).
                     val newIndex = player.currentMediaItemIndex
                     if (newIndex in playQueue.indices) {
                         index = newIndex
@@ -709,7 +727,7 @@ fun PlayerScreen(
     }
 
     val showChrome = controlsVisible && !inPip && !controlsLocked
-    val isVideoSurface = hasVideo || current?.kind == MediaKind.VIDEO
+    val isVideoSurface = !playAsAudio && (hasVideo || current?.kind == MediaKind.VIDEO)
 
     Box(
         modifier = Modifier
@@ -829,6 +847,7 @@ fun PlayerScreen(
                         controlsVisible = showChrome,
                         excludeTopPx = excludeTopPx,
                         excludeBottomPx = excludeBottomPx,
+                        sensitivityMultiplier = appSettings.gestureSensitivity.multiplier,
                     )
                 }
 
@@ -993,9 +1012,44 @@ fun PlayerScreen(
                     moreMenu = false
                     panel = Panel.Chapters
                 },
+                onJumpToTime = {
+                    moreMenu = false
+                    panel = Panel.JumpToTime
+                },
+                onPlayAsAudio = {
+                    moreMenu = false
+                    val next = !playAsAudio
+                    playAsAudio = next
+                    controller?.let { p ->
+                        p.trackSelectionParameters = p.trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, next)
+                            .build()
+                    }
+                    val window = activity?.window
+                    if (next) {
+                        window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                },
+                playAsAudio = playAsAudio,
+                showPlayAsAudio = current?.kind == MediaKind.VIDEO || hasVideo,
                 showAspect = isVideoSurface,
                 showSnapshot = isVideoSurface,
                 showChapters = chapters.isNotEmpty(),
+            )
+        }
+
+        if (panel == Panel.JumpToTime) {
+            JumpToTimeDialog(
+                durationMs = durationMs,
+                positionMs = positionMs,
+                onDismiss = { panel = Panel.None },
+                onSeek = { ms ->
+                    controller?.seekTo(ms)
+                    positionMs = ms
+                },
             )
         }
 
@@ -1094,6 +1148,19 @@ fun PlayerScreen(
                 canNext = index < playQueue.lastIndex || shuffleOn || repeatMode != Player.REPEAT_MODE_OFF,
                 repeatMode = repeatMode,
                 shuffleOn = shuffleOn,
+                showFrameStep = !isPlaying && isVideoSurface && frameStepAvailable,
+                onFrameStep = { forward ->
+                    val player = controller ?: return@PlayerControls
+                    val step = estimateFrameStepMs(player)
+                    if (step <= 0L) {
+                        frameStepAvailable = false
+                        return@PlayerControls
+                    }
+                    val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                    val target = (player.currentPosition + if (forward) step else -step).coerceIn(0L, dur)
+                    player.seekTo(target)
+                    positionMs = target
+                },
                 onScrub = {
                     scrubbing = true
                     scrubValue = it
@@ -1515,6 +1582,10 @@ private fun PlayerTopBar(
     onQueue: () -> Unit,
     onChapters: () -> Unit,
     showChapters: Boolean,
+    onJumpToTime: () -> Unit,
+    onPlayAsAudio: () -> Unit,
+    playAsAudio: Boolean,
+    showPlayAsAudio: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -1705,6 +1776,27 @@ private fun PlayerTopBar(
                     },
                 )
                 DropdownMenuItem(
+                    text = { Text("Jump to time", color = Color.White) },
+                    onClick = onJumpToTime,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Schedule, null, tint = ForgeAccent)
+                    },
+                )
+                if (showPlayAsAudio) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (playAsAudio) "Play with video" else "Play as audio",
+                                color = Color.White,
+                            )
+                        },
+                        onClick = onPlayAsAudio,
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Headset, null, tint = ForgeAccent)
+                        },
+                    )
+                }
+                DropdownMenuItem(
                     text = { Text("Share", color = Color.White) },
                     onClick = onShare,
                     leadingIcon = {
@@ -1780,6 +1872,8 @@ private fun PlayerControls(
     canNext: Boolean,
     repeatMode: Int,
     shuffleOn: Boolean,
+    showFrameStep: Boolean = false,
+    onFrameStep: (forward: Boolean) -> Unit = {},
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onPrev: () -> Unit,
@@ -1842,6 +1936,16 @@ private fun PlayerControls(
                     modifier = Modifier.size(22.dp),
                 )
             }
+            if (showFrameStep) {
+                IconButton(onClick = { onFrameStep(false) }) {
+                    Icon(
+                        Icons.Rounded.ChevronLeft,
+                        contentDescription = "Previous frame",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
             IconButton(onClick = onPrev, enabled = canPrev) {
                 Icon(
                     Icons.Rounded.SkipPrevious,
@@ -1871,6 +1975,16 @@ private fun PlayerControls(
                     tint = if (canNext) Color.White else ForgeMuted,
                     modifier = Modifier.size(28.dp),
                 )
+            }
+            if (showFrameStep) {
+                IconButton(onClick = { onFrameStep(true) }) {
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = "Next frame",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
             }
             IconButton(onClick = onCycleRepeat) {
                 Icon(
@@ -2581,6 +2695,31 @@ private fun parseChapters(metadata: Metadata): List<MediaChapter> {
         }
     }
     return out
+}
+
+
+private fun estimateFrameStepMs(player: Player): Long {
+    return try {
+        val groups = player.currentTracks.groups
+        var fps = 0f
+        for (g in groups) {
+            if (g.type != C.TRACK_TYPE_VIDEO) continue
+            for (i in 0 until g.length) {
+                val rate = g.getTrackFormat(i).frameRate
+                if (rate > 1f && rate < 240f) {
+                    fps = rate
+                    break
+                }
+            }
+            if (fps > 0f) break
+        }
+        when {
+            fps > 1f -> (1000f / fps).toLong().coerceIn(16L, 100L)
+            else -> 33L
+        }
+    } catch (_: Exception) {
+        33L
+    }
 }
 
 private fun formatSpeed(speed: Float): String {

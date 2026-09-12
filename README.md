@@ -72,6 +72,13 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Notification Stop action
 - Chapters list + jump when Media3 exposes timed metadata
 - Bass boost and Virtualizer toggles (audio session effects)
+- Jump to time (hh:mm:ss / mm:ss seek dialog)
+- Frame step when paused (approx. 1/fps; hidden while playing)
+- Play as audio (disable video track; screen-off friendly)
+- Delete media from device (MediaStore / SAF confirm) and library lists
+- Folder search (filter items inside the current folder view)
+- Quick Settings play/pause tile for the current session
+- Gesture sensitivity setting (low / normal / high)
 
 ## Build
 
@@ -90,4 +97,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.11.0 (12)
+- **version:** 1.12.0 (13)

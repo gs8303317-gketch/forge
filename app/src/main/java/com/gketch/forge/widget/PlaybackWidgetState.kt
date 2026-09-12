@@ -1,7 +1,10 @@
 package com.gketch.forge.widget
 
+import android.content.ComponentName
 import android.content.Context
+import android.service.quicksettings.TileService
 import androidx.glance.appwidget.updateAll
+import com.gketch.forge.tile.PlaybackTileService
 
 object PlaybackWidgetState {
     private const val PREFS = "forge_widget"
@@ -20,5 +23,11 @@ object PlaybackWidgetState {
             .putBoolean(KEY_PLAYING, playing)
             .apply()
         PlaybackWidget().updateAll(context)
+        runCatching {
+            TileService.requestListeningState(
+                context,
+                ComponentName(context, PlaybackTileService::class.java),
+            )
+        }
     }
 }

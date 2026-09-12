@@ -2,11 +2,20 @@ package com.gketch.forge.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+
+sealed class DeleteMediaResult {
+    data object Deleted : DeleteMediaResult()
+    data class NeedUserConfirm(val intentSender: IntentSender) : DeleteMediaResult()
+    data class Failed(val message: String) : DeleteMediaResult()
+}
 
 class MediaRepository(private val context: Context) {
 
@@ -61,6 +70,53 @@ class MediaRepository(private val context: Context) {
 
     suspend fun loadFolderItems(bucketId: Long): List<ForgeMediaItem> = withContext(Dispatchers.IO) {
         loadLibrary().filter { it.bucketId == bucketId }.sortedBy { it.title.lowercase() }
+    }
+
+    /**
+     * Delete a MediaStore or SAF document. On API 30+ MediaStore items may require a
+     * system confirmation IntentSender ([DeleteMediaResult.NeedUserConfirm]).
+     */
+    suspend fun deleteMedia(item: ForgeMediaItem): DeleteMediaResult = withContext(Dispatchers.IO) {
+        val uri = item.uri
+        val scheme = uri.scheme?.lowercase().orEmpty()
+        try {
+            when {
+                scheme == "content" && uri.authority?.contains("media", ignoreCase = true) == true -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val pi = MediaStore.createDeleteRequest(context.contentResolver, listOf(uri))
+                        DeleteMediaResult.NeedUserConfirm(pi.intentSender)
+                    } else {
+                        val rows = context.contentResolver.delete(uri, null, null)
+                        if (rows > 0) DeleteMediaResult.Deleted else DeleteMediaResult.Failed("Unable to delete")
+                    }
+                }
+                scheme == "content" -> {
+                    val ok = try {
+                        DocumentsContract.deleteDocument(context.contentResolver, uri)
+                    } catch (_: SecurityException) {
+                        false
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (ok) DeleteMediaResult.Deleted else DeleteMediaResult.Failed("No permission to delete this file")
+                }
+                scheme == "file" -> {
+                    val path = uri.path
+                    if (path.isNullOrBlank()) {
+                        DeleteMediaResult.Failed("Invalid file path")
+                    } else {
+                        val file = File(path)
+                        if (file.exists() && file.delete()) DeleteMediaResult.Deleted
+                        else DeleteMediaResult.Failed("Could not delete file")
+                    }
+                }
+                else -> DeleteMediaResult.Failed("Cannot delete this location")
+            }
+        } catch (e: SecurityException) {
+            DeleteMediaResult.Failed(e.message ?: "Permission denied")
+        } catch (e: Exception) {
+            DeleteMediaResult.Failed(e.message ?: "Delete failed")
+        }
     }
 
     private fun queryVideos(query: String): List<ForgeMediaItem> {

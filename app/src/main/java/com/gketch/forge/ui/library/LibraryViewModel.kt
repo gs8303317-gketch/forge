@@ -14,6 +14,7 @@ import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.LibrarySort
 import com.gketch.forge.data.MediaFolder
 import com.gketch.forge.data.MediaKind
+import com.gketch.forge.data.DeleteMediaResult
 import com.gketch.forge.data.MediaRepository
 import com.gketch.forge.data.M3uPlaylistIo
 import com.gketch.forge.data.PlaylistStore
@@ -45,6 +46,7 @@ data class LibraryUiState(
     val continueWatching: List<ContinueWatchItem> = emptyList(),
     val favoriteUris: Set<String> = emptySet(),
     val folders: List<MediaFolder> = emptyList(),
+    val folderItemsAll: List<ForgeMediaItem> = emptyList(),
     val folderItems: List<ForgeMediaItem> = emptyList(),
     val selectedFolder: MediaFolder? = null,
     val playlists: List<ForgePlaylist> = emptyList(),
@@ -80,6 +82,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private var searchJob: Job? = null
     private val listAnchors = mutableMapOf<String, ScrollAnchor>()
     private val gridAnchors = mutableMapOf<String, ScrollAnchor>()
+
+    private fun filterFolderItems(all: List<ForgeMediaItem>, query: String): List<ForgeMediaItem> {
+        val q = query.trim()
+        if (q.isEmpty()) return all
+        return all.filter { it.title.contains(q, ignoreCase = true) }
+    }
 
     fun listAnchor(key: String): ScrollAnchor = listAnchors[key] ?: ScrollAnchor()
 
@@ -194,20 +202,33 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 } catch (_: Exception) {
                     emptyList()
                 }
-                val items = repo.loadLibrary(_state.value.query, hidden, safItems)
+                val inFolder = _state.value.selectedFolder != null
+                // Global library query only when not browsing inside a folder.
+                val libraryQuery = if (inFolder) "" else _state.value.query
+                val items = repo.loadLibrary(libraryQuery, hidden, safItems)
                 val folders = repo.loadFolders(hidden, safItems)
-                _state.update {
-                    val folderItems = it.selectedFolder?.let { folder ->
-                        items.filter { m -> m.bucketId == folder.bucketId }
+                val selected = _state.value.selectedFolder
+                val folderAll = if (selected != null) {
+                    try {
+                        repo.loadLibrary("", hidden, safItems)
+                            .filter { m -> m.bucketId == selected.bucketId }
                             .sortedBy { m -> m.title.lowercase() }
-                    }.orEmpty()
+                    } catch (_: Exception) {
+                        items.filter { m -> m.bucketId == selected.bucketId }
+                            .sortedBy { m -> m.title.lowercase() }
+                    }
+                } else {
+                    emptyList()
+                }
+                _state.update {
                     val snap = resumeStore.positionSnapshot()
                     val continuing = resumeStore.continueWatching(items, snap, videosOnly = true)
                     it.copy(
                         items = items,
                         filtered = applyFilterAndSort(items, it.filter, it.sort),
                         folders = folders,
-                        folderItems = folderItems,
+                        folderItemsAll = folderAll,
+                        folderItems = filterFolderItems(folderAll, it.query),
                         continueWatching = continuing,
                         loading = false,
                     )
@@ -221,7 +242,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun onQueryChange(query: String) {
-        _state.update { it.copy(query = query) }
+        _state.update { st ->
+            if (st.selectedFolder != null) {
+                st.copy(query = query, folderItems = filterFolderItems(st.folderItemsAll, query))
+            } else {
+                st.copy(query = query)
+            }
+        }
+        if (_state.value.selectedFolder != null) return
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(250)
@@ -280,19 +308,72 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun openFolder(folder: MediaFolder) {
         viewModelScope.launch {
-            val items = _state.value.items
-                .filter { it.bucketId == folder.bucketId }
+            val hidden = _state.value.hiddenBucketIds
+            val all = try {
+                repo.loadFolderItems(folder.bucketId)
+            } catch (_: Exception) {
+                _state.value.items.filter { it.bucketId == folder.bucketId }
+            }.filter { it.bucketId !in hidden }
                 .sortedBy { it.title.lowercase() }
-                .ifEmpty { repo.loadFolderItems(folder.bucketId) }
-                .filter { it.bucketId !in _state.value.hiddenBucketIds }
             _state.update {
-                it.copy(selectedFolder = folder, folderItems = items, tab = LibraryTab.BROWSE)
+                it.copy(
+                    selectedFolder = folder,
+                    folderItemsAll = all,
+                    folderItems = filterFolderItems(all, it.query),
+                    tab = LibraryTab.BROWSE,
+                )
             }
         }
     }
 
     fun closeFolder() {
-        _state.update { it.copy(selectedFolder = null, folderItems = emptyList()) }
+        _state.update {
+            it.copy(
+                selectedFolder = null,
+                folderItemsAll = emptyList(),
+                folderItems = emptyList(),
+                query = if (it.tab == LibraryTab.BROWSE) "" else it.query,
+            )
+        }
+    }
+
+    fun removeDeletedFromLists(uri: android.net.Uri) {
+        val key = uri.toString()
+        _state.update { st ->
+            val items = st.items.filterNot { it.uri.toString() == key }
+            val folderAll = st.folderItemsAll.filterNot { it.uri.toString() == key }
+            st.copy(
+                items = items,
+                filtered = applyFilterAndSort(items, st.filter, st.sort),
+                folderItemsAll = folderAll,
+                folderItems = filterFolderItems(folderAll, st.query),
+                recent = st.recent.filterNot { it.uri.toString() == key },
+                favorites = st.favorites.filterNot { it.uri.toString() == key },
+                continueWatching = st.continueWatching.filterNot { it.item.uri.toString() == key },
+                selectedKeys = st.selectedKeys - listOfNotNull(
+                    st.items.find { it.uri.toString() == key }?.stableKey(),
+                    st.folderItemsAll.find { it.uri.toString() == key }?.stableKey(),
+                ).toSet(),
+            )
+        }
+        viewModelScope.launch {
+            recentStore.remove(uri)
+            resumeStore.clear(key)
+            favoritesStore.remove(uri)
+        }
+    }
+
+    suspend fun deleteMedia(item: ForgeMediaItem): DeleteMediaResult {
+        val result = repo.deleteMedia(item)
+        if (result is DeleteMediaResult.Deleted) {
+            removeDeletedFromLists(item.uri)
+        }
+        return result
+    }
+
+    fun onDeleteConfirmed(item: ForgeMediaItem) {
+        removeDeletedFromLists(item.uri)
+        refresh()
     }
 
     fun openPlaylist(playlist: ForgePlaylist) {

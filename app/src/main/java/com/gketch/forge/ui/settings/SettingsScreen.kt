@@ -86,7 +86,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Network streams · speed · gestures · resume · PiP · lock-screen controls",
+                text = "Subtitles · audio tracks · repeat/shuffle · sleep · streams · PiP · MediaSession",
                 style = MaterialTheme.typography.bodyMedium,
                 color = ForgeMuted,
             )

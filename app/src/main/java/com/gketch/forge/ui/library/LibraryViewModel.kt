@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.MediaRepository
+import com.gketch.forge.data.RecentStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,7 @@ enum class LibraryFilter { ALL, VIDEO, AUDIO }
 data class LibraryUiState(
     val items: List<ForgeMediaItem> = emptyList(),
     val filtered: List<ForgeMediaItem> = emptyList(),
+    val recent: List<ForgeMediaItem> = emptyList(),
     val query: String = "",
     val filter: LibraryFilter = LibraryFilter.ALL,
     val loading: Boolean = true,
@@ -27,12 +29,18 @@ data class LibraryUiState(
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = MediaRepository(application)
+    private val recentStore = RecentStore(application)
     private val _state = MutableStateFlow(LibraryUiState())
     val state: StateFlow<LibraryUiState> = _state.asStateFlow()
     private var searchJob: Job? = null
 
     init {
         refresh()
+        viewModelScope.launch {
+            recentStore.recent.collect { items ->
+                _state.update { it.copy(recent = items) }
+            }
+        }
     }
 
     fun refresh() {

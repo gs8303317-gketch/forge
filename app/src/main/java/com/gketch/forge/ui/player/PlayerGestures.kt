@@ -1,6 +1,10 @@
 package com.gketch.forge.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -29,19 +34,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.drag
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.unit.dp
 import com.gketch.forge.ui.library.formatDuration
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeGraphite
 import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlinx.coroutines.delay
 
 private enum class GestureKind { Seek, Volume, Brightness }
 
@@ -50,6 +53,7 @@ fun PlayerGestureLayer(
     durationMs: Long,
     positionMs: Long,
     onSeek: (Long) -> Unit,
+    onDoubleTapSeek: (back: Boolean) -> Unit,
     onVolumeFraction: (Float) -> Unit,
     onBrightnessFraction: (Float) -> Unit,
     onTap: () -> Unit,
@@ -62,6 +66,7 @@ fun PlayerGestureLayer(
     val volumeState = rememberUpdatedState(currentVolume)
     val brightnessState = rememberUpdatedState(currentBrightness)
     val seekState = rememberUpdatedState(onSeek)
+    val doubleTapState = rememberUpdatedState(onDoubleTapSeek)
     val volCb = rememberUpdatedState(onVolumeFraction)
     val britCb = rememberUpdatedState(onBrightnessFraction)
     val tapState = rememberUpdatedState(onTap)
@@ -69,10 +74,28 @@ fun PlayerGestureLayer(
     var kind by remember { mutableStateOf<GestureKind?>(null) }
     var previewMs by remember { mutableLongStateOf(0L) }
     var barFraction by remember { mutableFloatStateOf(0f) }
+    var doubleTapFlash by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(doubleTapFlash) {
+        if (doubleTapFlash != null) {
+            delay(450)
+            doubleTapFlash = null
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { offset ->
+                        val back = offset.x < size.width / 2f
+                        doubleTapFlash = back
+                        doubleTapState.value(back)
+                    },
+                    onTap = { tapState.value() },
+                )
+            }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -85,7 +108,7 @@ fun PlayerGestureLayer(
                     val dur = durationState.value.coerceAtLeast(0L)
                     val slop = 24f
 
-                    val completed = drag(down.id) { change ->
+                    drag(down.id) { change ->
                         val delta = change.positionChange()
                         change.consume()
                         total += delta
@@ -123,9 +146,7 @@ fun PlayerGestureLayer(
                         }
                     }
 
-                    if (classified == null && completed) {
-                        tapState.value()
-                    } else if (classified == GestureKind.Seek) {
+                    if (classified == GestureKind.Seek) {
                         seekState.value(previewMs)
                     }
                     kind = null
@@ -145,6 +166,40 @@ fun PlayerGestureLayer(
                 alignment = Alignment.CenterStart,
             )
             null -> Unit
+        }
+        when (doubleTapFlash) {
+            true -> DoubleTapHud(back = true)
+            false -> DoubleTapHud(back = false)
+            null -> Unit
+        }
+    }
+}
+
+@Composable
+private fun DoubleTapHud(back: Boolean) {
+    Box(
+        Modifier.fillMaxSize(),
+        contentAlignment = if (back) Alignment.CenterStart else Alignment.CenterEnd,
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 36.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.Black.copy(alpha = 0.55f))
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                imageVector = if (back) Icons.Rounded.FastRewind else Icons.Rounded.FastForward,
+                contentDescription = null,
+                tint = ForgeAccent,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (back) "−10s" else "+10s",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+            )
         }
     }
 }

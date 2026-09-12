@@ -3,6 +3,7 @@ package com.gketch.forge.ui.library
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Search
@@ -177,7 +180,7 @@ fun LibraryScreen(
         },
     ) { padding ->
         when {
-            state.loading && permitted -> {
+            state.loading && permitted && state.filtered.isEmpty() && state.recent.isEmpty() -> {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -185,7 +188,7 @@ fun LibraryScreen(
                     CircularProgressIndicator(color = ForgeAccent)
                 }
             }
-            state.error != null && permitted -> {
+            state.error != null && permitted && state.filtered.isEmpty() -> {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -193,7 +196,7 @@ fun LibraryScreen(
                     Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
                 }
             }
-            state.filtered.isEmpty() -> {
+            state.filtered.isEmpty() && state.recent.isEmpty() -> {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center,
@@ -213,6 +216,31 @@ fun LibraryScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    if (state.recent.isNotEmpty() && state.query.isBlank()) {
+                        item(key = "recent-header") {
+                            RecentSection(
+                                items = state.recent,
+                                onPlay = { item -> onPlay(listOf(item), 0) },
+                            )
+                        }
+                        item(key = "library-header") {
+                            Text(
+                                text = "Library",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = ForgeMuted,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+                            )
+                        }
+                    }
+                    if (state.filtered.isEmpty() && state.recent.isNotEmpty()) {
+                        item(key = "empty-library") {
+                            Text(
+                                text = if (permitted) "No matching library items" else "Grant access to browse the library",
+                                color = ForgeMuted,
+                                modifier = Modifier.padding(vertical = 12.dp),
+                            )
+                        }
+                    }
                     itemsIndexed(state.filtered, key = { _, item -> "${item.kind}-${item.id}" }) { index, item ->
                         MediaRow(item = item) {
                             onPlay(state.filtered, index)
@@ -232,6 +260,85 @@ fun LibraryScreen(
                 showStreamDialog = false
                 onPlay(listOf(item), 0)
             },
+        )
+    }
+}
+
+@Composable
+private fun RecentSection(
+    items: List<ForgeMediaItem>,
+    onPlay: (ForgeMediaItem) -> Unit,
+) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.History,
+                contentDescription = null,
+                tint = ForgeAccent,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Recently played",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.take(12).forEach { item ->
+                RecentCard(item = item, onClick = { onPlay(item) })
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun RecentCard(item: ForgeMediaItem, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(120.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ForgeSurfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (item.albumArtUri != null) {
+                AsyncImage(
+                    model = item.albumArtUri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(
+                    imageVector = if (item.kind == MediaKind.VIDEO) Icons.Rounded.Movie else Icons.Rounded.AudioFile,
+                    contentDescription = null,
+                    tint = ForgeAccent,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.labelLarge,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            minLines = 2,
         )
     }
 }

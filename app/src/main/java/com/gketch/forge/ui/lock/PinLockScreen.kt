@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,10 +49,6 @@ import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeMuted
 import kotlinx.coroutines.launch
 
-/**
- * Compatible authenticators: WEAK | DEVICE_CREDENTIAL.
- * Mixing BIOMETRIC_STRONG with BIOMETRIC_WEAK (1.14.0) throws on some devices.
- */
 private const val BIOMETRIC_AUTHENTICATORS =
     BiometricManager.Authenticators.BIOMETRIC_WEAK or
         BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -122,7 +119,6 @@ fun PinLockGate(
                 .build()
             prompt.authenticate(info)
         } catch (_: Throwable) {
-            // Missing hardware, library, or Activity not ready — PIN pad stays usable.
         }
     }
 
@@ -134,6 +130,7 @@ fun PinLockGate(
         modifier = Modifier
             .fillMaxSize()
             .background(ForgeBlack)
+            .safeDrawingPadding()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,

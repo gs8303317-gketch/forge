@@ -2,25 +2,28 @@ package com.gketch.forge
 
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.os.LocaleListCompat
+import androidx.core.view.WindowCompat
 import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.AppSettings
 import com.gketch.forge.data.AppSettingsStore
@@ -44,7 +47,21 @@ class MainActivity : AppCompatActivity() {
         // AppCompatActivity requires Theme.AppCompat (1.14.0 used platform Material → crash).
         setTheme(R.style.Theme_Forge)
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Dark system bars: time / battery / network stay in the system strip
+        // and never paint over titles or list rows (portrait or landscape).
+        val barColor = AndroidColor.parseColor("#FF121212")
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(barColor),
+            navigationBarStyle = SystemBarStyle.dark(barColor),
+        )
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         consumeIntent(intent)
         setContent {
             val appStore = remember { AppSettingsStore(this@MainActivity) }
@@ -137,8 +154,6 @@ class MainActivity : AppCompatActivity() {
             AppLanguage.ENGLISH -> LocaleListCompat.forLanguageTags("en")
             AppLanguage.HINDI -> LocaleListCompat.forLanguageTags("hi")
         }
-        // Latch on AppCompat's live locales (survives Activity recreate). Calling
-        // setApplicationLocales when already applied recreates again → hang loop.
         val current = AppCompatDelegate.getApplicationLocales()
         if (locales.toLanguageTags() == current.toLanguageTags()) return
         AppCompatDelegate.setApplicationLocales(locales)
@@ -159,7 +174,6 @@ class MainActivity : AppCompatActivity() {
                         return
                     }
                 }
-                // text/plain VIEW body may carry a URL
                 extractUrlFromText(intent)?.let { url ->
                     externalUri = Uri.parse(url)
                     externalMime = intent.type ?: "text/plain"

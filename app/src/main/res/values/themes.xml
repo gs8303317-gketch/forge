@@ -9,5 +9,7 @@
         <item name="android:colorPrimary">@color/forge_accent</item>
         <item name="colorPrimary">@color/forge_accent</item>
         <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 </resources>

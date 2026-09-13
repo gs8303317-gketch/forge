@@ -22,11 +22,11 @@ android {
         applicationId = "com.gketch.forge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "1.29.2"
+        versionCode = 40
+        versionName = "1.29.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "VERSION_NAME", "\"1.29.2\"")
-        buildConfigField("int", "VERSION_CODE", "39")
+        buildConfigField("String", "VERSION_NAME", "\"1.29.3\"")
+        buildConfigField("int", "VERSION_CODE", "40")
     }
 
     signingConfigs {
@@ -111,7 +111,6 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
 
-    // Cast (MediaRoute + Cast framework). Runtime requires Play Services.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.mediarouter:mediarouter:1.7.0")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")

@@ -57,6 +57,8 @@ private const val EDGE_FRACTION = 0.20f
 private const val DOUBLE_TAP_THIRD = 1f / 3f
 /** Gesture brightness spans 0..2 (0%..200%); full-height swipe covers the range. */
 private const val BRIGHTNESS_SPAN = BrightnessStore.MAX
+/** Gesture volume spans 0..2 (0%..200%); above 1.0 continues into loudness boost. */
+private const val VOLUME_SPAN = 2f
 
 @Composable
 fun PlayerGestureLayer(
@@ -269,7 +271,7 @@ fun PlayerGestureLayer(
                                 start.x >= rightEdge -> GestureKind.Volume
                                 else -> null
                             }
-                            startVol = volumeState.value().coerceIn(0f, 1f)
+                            startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
                             startBrit = brightnessState.value().coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
                             startPos = positionState.value
                             kind = classified
@@ -288,7 +290,10 @@ fun PlayerGestureLayer(
                             }
                             GestureKind.Volume -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)
-                                val next = (startVol - (total.y / size.height) * sens).coerceIn(0f, 1f)
+                                // Full-height swipe covers 0..200% (system 0..100, then loudness boost).
+                                val next = (
+                                    startVol - (total.y / size.height) * sens * VOLUME_SPAN
+                                    ).coerceIn(0f, VOLUME_SPAN)
                                 barFraction = next
                                 volCb.value(next)
                             }
@@ -316,8 +321,8 @@ fun PlayerGestureLayer(
             GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs)
             GestureKind.Volume -> SideHud(
                 icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
-                displayPercent = (barFraction * 100).toInt(),
-                barFill = barFraction.coerceIn(0f, 1f),
+                displayPercent = (barFraction * 100).toInt().coerceIn(0, 200),
+                barFill = (barFraction / VOLUME_SPAN).coerceIn(0f, 1f),
                 alignment = Alignment.CenterEnd,
             )
             GestureKind.Brightness -> SideHud(

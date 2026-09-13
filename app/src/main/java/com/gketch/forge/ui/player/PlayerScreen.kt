@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -88,6 +89,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -841,29 +844,7 @@ fun PlayerScreen(
                                 maybeSeriesAutoNext(
                                     current = cur,
                                     mediaRepository = mediaRepository,
-                                    playQueueSize = playQueue.size,
                                     onOffer = { next -> seriesPrompt = next },
-                                    onPlayNext = { next ->
-                                        val mutable = playQueue.toMutableList()
-                                        mutable.add(next)
-                                        playQueue = mutable
-                                        val media = runCatching {
-                                            androidx.media3.common.MediaItem.Builder()
-                                                .setUri(next.uri)
-                                                .setMediaId(next.uri.toString())
-                                                .setMediaMetadata(
-                                                    androidx.media3.common.MediaMetadata.Builder()
-                                                        .setTitle(next.title)
-                                                        .build(),
-                                                )
-                                                .build()
-                                        }.getOrNull()
-                                        if (media != null) {
-                                            player.addMediaItem(media)
-                                            player.seekTo(playQueue.lastIndex, 0L)
-                                            player.play()
-                                        }
-                                    },
                                 )
                             }
                         }
@@ -1204,7 +1185,11 @@ fun PlayerScreen(
                             controlsVisible = true
                             controlsHideToken++
                         },
-                        onVolumeFraction = { setMusicVolume(context, it) },
+                        onVolumeFraction = { level ->
+                            setCombinedVolumeLevel(context, level) { pct ->
+                                volumeBoostPercent = pct
+                            }
+                        },
                         onBrightnessFraction = { frac ->
                             surfaceBrightness = frac.coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
                             applySurfaceBrightness(surfaceBrightness, playerViewRef)
@@ -1263,7 +1248,7 @@ fun PlayerScreen(
                                 controlsHideToken++
                             }
                         },
-                        currentVolume = { musicVolumeFraction(context) },
+                        currentVolume = { combinedVolumeLevel(context) },
                         currentBrightness = { surfaceBrightness },
                         gesturesEnabled = !controlsLocked,
                         controlsVisible = showChrome,
@@ -1512,12 +1497,19 @@ fun PlayerScreen(
                 onSnapshot = {
                     moreMenu = false
                     scope.launch {
-                        val result = FrameCapture.captureToGallery(
-                            context,
-                            playerViewRef,
-                            current?.title ?: "frame",
-                        )
-                        snapshotMessage = result.message
+                        runCatching {
+                            val result = FrameCapture.captureToGallery(
+                                context,
+                                playerViewRef,
+                                current?.title ?: "frame",
+                            )
+                            snapshotMessage = result.message
+                            if (result.ok && result.uri != null) {
+                                shareSnapshotUri(context, result.uri)
+                            }
+                        }.onFailure { e ->
+                            snapshotMessage = e.message ?: "Snapshot failed"
+                        }
                     }
                 },
                 onShare = {
@@ -1800,6 +1792,32 @@ fun PlayerScreen(
                     OrientationLock.AUTO -> "Auto"
                 },
                 showChapters = chapters.isNotEmpty(),
+                showSkipIntro = appSettings.skipIntroSeconds.seconds > 0,
+                skipIntroSeconds = appSettings.skipIntroSeconds.seconds,
+                onSkipIntro = {
+                    val player = controller ?: return@PlayerControls
+                    val skipMs = appSettings.skipIntroSeconds.seconds * 1000L
+                    if (skipMs <= 0L) return@PlayerControls
+                    runCatching {
+                        val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                        val pos = player.currentPosition
+                        val target = if (pos < skipMs) {
+                            skipMs.coerceAtMost(dur)
+                        } else {
+                            (pos + skipMs).coerceAtMost(dur)
+                        }
+                        player.seekTo(target)
+                        positionMs = target
+                        progress.updateProgress(
+                            target,
+                            progress.durationMs,
+                            progress.bufferedMs,
+                            progress.buffering,
+                            progress.playbackState,
+                        )
+                    }
+                    controlsHideToken++
+                },
                 onInteract = { controlsHideToken++ },
                 onCycleAspect = {
                     val modes = AspectMode.entries
@@ -2333,50 +2351,87 @@ fun PlayerScreen(
         }
 
         seriesPrompt?.let { nextEp ->
-            AlertDialog(
-                onDismissRequest = { seriesPrompt = null },
-                containerColor = ForgeGraphite,
-                title = { Text("Next episode", color = Color.White) },
-                text = {
-                    Text(
-                        "Play ${nextEp.title}?",
-                        color = ForgeMuted,
+            // End card overlay (crash-isolated) — Play next / Stop
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = { /* consume */ },
                     )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val next = seriesPrompt
-                            seriesPrompt = null
-                            val player = controller
-                            if (next != null && player != null) {
-                                runCatching {
-                                    val mutable = playQueue.toMutableList()
-                                    mutable.add(next)
-                                    playQueue = mutable
-                                    val media = androidx.media3.common.MediaItem.Builder()
-                                        .setUri(next.uri)
-                                        .setMediaId(next.uri.toString())
-                                        .setMediaMetadata(
-                                            androidx.media3.common.MediaMetadata.Builder()
-                                                .setTitle(next.title)
-                                                .build(),
-                                        )
-                                        .build()
-                                    player.addMediaItem(media)
-                                    player.seekToNextMediaItem()
-                                    player.play()
+                    .zIndex(8f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(28.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(ForgeGraphite)
+                        .padding(horizontal = 22.dp, vertical = 20.dp)
+                        .fillMaxWidth(0.88f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = stringResource(R.string.end_card_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = nextEp.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ForgeMuted,
+                        maxLines = 3,
+                    )
+                    Spacer(Modifier.height(18.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        TextButton(
+                            onClick = {
+                                seriesPrompt = null
+                                runCatching { controller?.pause() }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(stringResource(R.string.end_card_stop), color = Color.White)
+                        }
+                        Button(
+                            onClick = {
+                                val next = seriesPrompt
+                                seriesPrompt = null
+                                val player = controller
+                                if (next != null && player != null) {
+                                    runCatching {
+                                        val mutable = playQueue.toMutableList()
+                                        mutable.add(next)
+                                        playQueue = mutable
+                                        val media = androidx.media3.common.MediaItem.Builder()
+                                            .setUri(next.uri)
+                                            .setMediaId(next.uri.toString())
+                                            .setMediaMetadata(
+                                                androidx.media3.common.MediaMetadata.Builder()
+                                                    .setTitle(next.title)
+                                                    .build(),
+                                            )
+                                            .build()
+                                        player.addMediaItem(media)
+                                        player.seekToNextMediaItem()
+                                        player.play()
+                                    }
                                 }
-                            }
-                        },
-                    ) { Text("Play", color = ForgeAccent) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { seriesPrompt = null }) {
-                        Text("Dismiss", color = Color.White)
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent, contentColor = Color.Black),
+                        ) {
+                            Text(stringResource(R.string.play_next))
+                        }
                     }
-                },
-            )
+                }
+            }
         }
     }
 }
@@ -2767,6 +2822,9 @@ private fun PlayerControls(
     showOrientToggle: Boolean = false,
     orientLabel: String = "Auto",
     showChapters: Boolean = false,
+    showSkipIntro: Boolean = false,
+    skipIntroSeconds: Int = 0,
+    onSkipIntro: () -> Unit = {},
     onInteract: () -> Unit = {},
     onFrameStep: (forward: Boolean) -> Unit = {},
     onCycleAspect: () -> Unit = {},
@@ -2912,6 +2970,27 @@ private fun PlayerControls(
                     )
                     Text(
                         text = orientLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            if (showSkipIntro && skipIntroSeconds > 0) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onSkipIntro)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.FastForward,
+                        contentDescription = stringResource(R.string.skip_intro),
+                        tint = ForgeAccent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "${skipIntroSeconds}s",
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                     )
@@ -3800,6 +3879,46 @@ private fun setMusicVolume(context: Context, fraction: Float) {
     am.setStreamVolume(AudioManager.STREAM_MUSIC, value, 0)
 }
 
+/** 0..1 = system volume; 1..2 = max system + loudness boost (HUD 100%..200%). */
+private fun combinedVolumeLevel(context: Context): Float {
+    val boost = ForgeLoudness.boostPercent
+    return if (boost > 100) {
+        1f + ((boost - 100).toFloat() / (ForgeLoudness.MAX_BOOST_PERCENT - 100).toFloat())
+            .coerceIn(0f, 1f)
+    } else {
+        musicVolumeFraction(context).coerceIn(0f, 1f)
+    }
+}
+
+private fun setCombinedVolumeLevel(context: Context, level: Float, onBoostPercent: (Int) -> Unit) {
+    val v = level.coerceIn(0f, 2f)
+    runCatching {
+        if (v <= 1f) {
+            setMusicVolume(context, v)
+            ForgeLoudness.setBoostPercent(100)
+            onBoostPercent(100)
+        } else {
+            setMusicVolume(context, 1f)
+            val pct = (
+                100f + (v - 1f) * (ForgeLoudness.MAX_BOOST_PERCENT - 100).toFloat()
+                ).toInt().coerceIn(100, ForgeLoudness.MAX_BOOST_PERCENT)
+            ForgeLoudness.setBoostPercent(pct)
+            onBoostPercent(pct)
+        }
+    }
+}
+
+private fun shareSnapshotUri(context: Context, uri: android.net.Uri) {
+    runCatching {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_snapshot)))
+    }
+}
+
 /**
  * Video-only brightness: dim via overlay (caller), boost via ColorMatrix surfaceBoost.
  * 1.0 = native; (1..2] maps to surfaceBoost 0..~0.65.
@@ -3819,15 +3938,13 @@ private fun applySurfaceBrightness(fraction: Float, playerView: PlayerView?) {
 private suspend fun maybeSeriesAutoNext(
     current: ForgeMediaItem,
     mediaRepository: MediaRepository,
-    playQueueSize: Int,
     onOffer: (ForgeMediaItem) -> Unit,
-    onPlayNext: (ForgeMediaItem) -> Unit,
 ) {
     if (current.bucketId == 0L) return
     val folder = mediaRepository.loadFolderItems(current.bucketId)
     val next = SeriesEpisode.findNext(current, folder) ?: return
-    // Single-item opens: auto-play. Multi-item queues at end: offer so we don't surprise.
-    if (playQueueSize <= 1) onPlayNext(next) else onOffer(next)
+    // Always show end card (Play next / Stop) when a next episode resolves.
+    onOffer(next)
 }
 
 /** Undo any leftover 1.18 window dim so chrome stays at system brightness. */

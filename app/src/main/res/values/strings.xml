@@ -140,4 +140,16 @@
     <string name="chapter_next">Next chapter</string>
     <string name="mirror_h">Mirror H</string>
     <string name="mirror_v">Mirror V</string>
+
+    <string name="skip_intro">Skip intro</string>
+    <string name="skip_intro_sub">Jump past opening credits by N seconds from start, or forward by that amount</string>
+    <string name="skip_intro_off">Off</string>
+    <string name="play_next">Play next</string>
+    <string name="end_card_stop">Stop</string>
+    <string name="end_card_title">Next episode</string>
+    <string name="library_rescan">Rescan library</string>
+    <string name="share_snapshot">Share snapshot</string>
+    <string name="snapshot_saved_share">Saved — choose an app to share</string>
+    <string name="series_auto_next_sub">When an episode ends, offer Play next / Stop for the next file in the folder</string>
+    <string name="volume_boost_gesture">Volume boost</string>
 </resources>

@@ -24,6 +24,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Player polish 1.19.0: recently-played tiles no longer stuck red/trash (swipe-in-horizontal-row replaced with long-press remove); left-edge brightness dims video only (overlay, not window); full-screen seek preview on scrub/gesture
 - Hotfix 1.20.1: language switch no longer hangs (DataStore default SYSTEM + Activity recreate latch loop); PIN unlock survives locale recreate
 - Player 1.21.0: brightness 0–200% (dim overlay + ColorMatrix boost, video-only); pinch-to-zoom + pan (double-tap / Transform reset); night/blue-light filter; series auto-next (SxxExx / Episode) from Settings
+- Player 1.22.0: right-edge volume continues into loudness boost (>100% HUD); skip-intro setting + bottom-tools button; series end card (Play next / Stop); library pull-to-refresh / rescan; share frame snapshot via Android share sheet
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)
@@ -39,7 +40,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - M3U playlist import / export (local files)
 - Volume boost above 100% (LoudnessEnhancer, capped)
 - Control lock in ⋮ menu (gestures/controls off; tap to briefly show unlock, same hide timer)
-- Frame snapshot to Pictures/Forge
+- Frame snapshot to Pictures/Forge (+ share sheet)
 - VLC-style home: Video | Audio | Playlists | Browse bottom navigation
 - Sort in a toolbar menu (name / date / size / duration); grid/list toggle
 - Browse: folder list, SAF folders, and saved streams
@@ -121,4 +122,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.21.0 (24)
+- **version:** 1.22.0 (25)

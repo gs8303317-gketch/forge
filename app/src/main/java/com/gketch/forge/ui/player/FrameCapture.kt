@@ -3,6 +3,7 @@ package com.gketch.forge.ui.player
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -19,19 +20,19 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 object FrameCapture {
-    data class Result(val ok: Boolean, val message: String)
+    data class Result(val ok: Boolean, val message: String, val uri: Uri? = null)
 
     suspend fun captureToGallery(context: Context, playerView: PlayerView?, titleHint: String): Result {
         val view = playerView ?: return Result(false, "No video surface")
         val bitmap = captureBitmap(view) ?: return Result(false, "Could not capture frame")
         return try {
             val name = "Forge_${sanitize(titleHint)}_${System.currentTimeMillis()}.jpg"
-            saveJpeg(context, bitmap, name)
+            val uri = saveJpeg(context, bitmap, name)
             bitmap.recycle()
-            Result(true, "Saved to Pictures/Forge")
+            Result(true, "Saved to Pictures/Forge", uri)
         } catch (e: Exception) {
             bitmap.recycle()
-            Result(false, e.message ?: "Save failed")
+            Result(false, e.message ?: "Save failed", null)
         }
     }
 
@@ -89,7 +90,7 @@ object FrameCapture {
         return null
     }
 
-    private fun saveJpeg(context: Context, bitmap: Bitmap, displayName: String) {
+    private fun saveJpeg(context: Context, bitmap: Bitmap, displayName: String): Uri {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
@@ -111,6 +112,7 @@ object FrameCapture {
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
         }
+        return uri
     }
 
     private fun sanitize(raw: String): String =

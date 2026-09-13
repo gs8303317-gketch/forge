@@ -69,6 +69,7 @@ data class LibraryUiState(
     val tab: LibraryTab = LibraryTab.VIDEO,
     val layout: LibraryLayout = LibraryLayout.GRID,
     val loading: Boolean = true,
+    val refreshing: Boolean = false,
     val error: String? = null,
     val selecting: Boolean = false,
     val selectedKeys: Set<String> = emptySet(),
@@ -251,6 +252,69 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         if (_state.value.items.isNotEmpty() && !_state.value.loading) return
         refresh()
     }
+
+    /** Force MediaStore volume scan (API 30+) then reload library lists. */
+    fun forceRescan() {
+        viewModelScope.launch {
+            _state.update { it.copy(refreshing = true, error = null) }
+            // Nudge MediaStore observers, then reload lists from MediaStore/SAF.
+            runCatching {
+                val cr = getApplication<Application>().contentResolver
+                cr.notifyChange(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null)
+                cr.notifyChange(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, null)
+            }
+            delay(150)
+            // Inline reload (same as refresh) then clear refreshing.
+            try {
+                val hidden = _state.value.hiddenBucketIds
+                val safItems = try {
+                    safScanner.scan(_state.value.safFolders)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val inFolder = _state.value.selectedFolder != null
+                val libraryQuery = if (inFolder) "" else _state.value.query
+                val items = repo.loadLibrary(libraryQuery, hidden, safItems)
+                val folders = repo.loadFolders(hidden, safItems)
+                val selected = _state.value.selectedFolder
+                val folderAll = if (selected != null) {
+                    try {
+                        repo.loadLibrary("", hidden, safItems)
+                            .filter { m -> m.bucketId == selected.bucketId }
+                            .sortedBy { m -> m.title.lowercase() }
+                    } catch (_: Exception) {
+                        items.filter { m -> m.bucketId == selected.bucketId }
+                            .sortedBy { m -> m.title.lowercase() }
+                    }
+                } else {
+                    emptyList()
+                }
+                _state.update {
+                    val snap = resumeStore.positionSnapshot()
+                    val continuing = resumeStore.continueWatching(items, snap, videosOnly = true)
+                    val groups = recomputeAudioGroups(items, it.audioBrowseMode, it.query)
+                    val sel = it.selectedAudioGroup?.let { g -> groups.find { x -> x.key == g.key } }
+                    it.copy(
+                        items = items,
+                        filtered = applyFilterAndSort(items, it.filter, it.sort),
+                        folders = folders,
+                        folderItemsAll = folderAll,
+                        folderItems = filterFolderItems(folderAll, it.query),
+                        continueWatching = continuing,
+                        loading = false,
+                        refreshing = false,
+                        audioGroups = groups,
+                        selectedAudioGroup = sel,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(loading = false, refreshing = false, error = e.message ?: "Failed to load media")
+                }
+            }
+        }
+    }
+
 
     fun refresh() {
         viewModelScope.launch {

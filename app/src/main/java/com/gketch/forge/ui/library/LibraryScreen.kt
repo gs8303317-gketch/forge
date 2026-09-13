@@ -69,6 +69,7 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Star
@@ -76,7 +77,10 @@ import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -142,6 +146,7 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onPlay: (items: List<ForgeMediaItem>, index: Int) -> Unit,
@@ -416,6 +421,13 @@ fun LibraryScreen(
                                 Icon(Icons.Rounded.Link, contentDescription = "Add stream", tint = ForgeMuted)
                             }
                         }
+                        IconButton(onClick = { viewModel.forceRescan() }) {
+                            Icon(
+                                Icons.Rounded.Refresh,
+                                contentDescription = stringResource(R.string.library_rescan),
+                                tint = ForgeMuted,
+                            )
+                        }
                         Box {
                             IconButton(onClick = { overflowMenu = true }) {
                                 Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = ForgeMuted)
@@ -425,6 +437,14 @@ fun LibraryScreen(
                                 onDismissRequest = { overflowMenu = false },
                                 containerColor = ForgeGraphite,
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.library_rescan), color = Color.White) },
+                                    onClick = {
+                                        overflowMenu = false
+                                        viewModel.forceRescan()
+                                    },
+                                    leadingIcon = { Icon(Icons.Rounded.Refresh, null, tint = ForgeAccent) },
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Open stream", color = Color.White) },
                                     onClick = {
@@ -519,11 +539,19 @@ fun LibraryScreen(
             }
         },
     ) { padding ->
+        val ptrState = rememberPullToRefreshState()
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = { viewModel.forceRescan() },
+            state = ptrState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+        val innerPadding = PaddingValues(0.dp)
         when (state.tab) {
             LibraryTab.VIDEO -> LibraryBody(
                 state = state,
                 permitted = permitted,
-                padding = padding,
+                padding = innerPadding,
                 listState = mediaListState,
                 gridState = mediaGridState,
                 onPlay = onPlay,
@@ -540,7 +568,7 @@ fun LibraryScreen(
                 val group = state.selectedAudioGroup
                 when {
                     group != null -> {
-                        Column(Modifier.fillMaxSize().padding(padding)) {
+                        Column(Modifier.fillMaxSize().padding(innerPadding)) {
                             AudioGroupTracksHeader(
                                 group = group,
                                 onBack = viewModel::closeAudioGroup,
@@ -573,13 +601,13 @@ fun LibraryScreen(
                     state.audioBrowseMode != AudioBrowseMode.SONGS -> AudioGroupsList(
                         groups = state.audioGroups,
                         listState = audioGroupsListState,
-                        contentPadding = padding,
+                        contentPadding = innerPadding,
                         onOpen = viewModel::openAudioGroup,
                     )
                     else -> LibraryBody(
                         state = state,
                         permitted = permitted,
-                        padding = padding,
+                        padding = innerPadding,
                         listState = mediaListState,
                         gridState = mediaGridState,
                         onPlay = onPlay,
@@ -596,7 +624,7 @@ fun LibraryScreen(
             }
             LibraryTab.BROWSE -> FoldersBody(
                 state = state,
-                padding = padding,
+                padding = innerPadding,
                 browseListState = browseListState,
                 folderListState = folderListState,
                 folderGridState = folderGridState,
@@ -617,7 +645,7 @@ fun LibraryScreen(
             )
             LibraryTab.PLAYLISTS -> PlaylistsBody(
                 state = state,
-                padding = padding,
+                padding = innerPadding,
                 playlistsListState = playlistsListState,
                 playlistItemsState = playlistItemsState,
                 onOpen = viewModel::openPlaylist,
@@ -645,6 +673,7 @@ fun LibraryScreen(
                 },
             )
         }
+        } // PullToRefreshBox
     }
 
     if (showStreamDialog) {

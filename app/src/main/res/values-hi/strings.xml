@@ -137,4 +137,16 @@
     <string name="chapter_next">अगला अध्याय</string>
     <string name="mirror_h">क्षैतिज दर्पण</string>
     <string name="mirror_v">ऊर्ध्वाधर दर्पण</string>
+
+    <string name="skip_intro">इंट्रो छोड़ें</string>
+    <string name="skip_intro_sub">शुरुआत से N सेकंड छोड़ें, या उतने आगे जाएँ</string>
+    <string name="skip_intro_off">बंद</string>
+    <string name="play_next">अगला चलाएँ</string>
+    <string name="end_card_stop">रोकें</string>
+    <string name="end_card_title">अगला एपिसोड</string>
+    <string name="library_rescan">लाइब्रेरी रीस्कैन</string>
+    <string name="share_snapshot">स्नैपशॉट साझा करें</string>
+    <string name="snapshot_saved_share">सहेजा गया — साझा करने के लिए ऐप चुनें</string>
+    <string name="series_auto_next_sub">एपिसोड खत्म होने पर अगली फ़ाइल के लिए Play next / Stop दिखाएँ</string>
+    <string name="volume_boost_gesture">वॉल्यूम बूस्ट</string>
 </resources>

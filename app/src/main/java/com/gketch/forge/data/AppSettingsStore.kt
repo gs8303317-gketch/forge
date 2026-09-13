@@ -88,6 +88,14 @@ enum class ResumeBehavior(val label: String) {
     ALWAYS_START_OVER("Always start over"),
 }
 
+
+enum class SkipIntroSeconds(val label: String, val seconds: Int) {
+    OFF("Off", 0),
+    SEC_30("30s", 30),
+    SEC_60("60s", 60),
+    SEC_90("90s", 90),
+}
+
 enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
     SEC_3("3s", 3_000L),
     SEC_5_5("5.5s", 5_500L),
@@ -122,6 +130,7 @@ data class AppSettings(
     val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_5_5,
     val resumeBehavior: ResumeBehavior = ResumeBehavior.ASK,
     val seriesAutoNext: Boolean = false,
+    val skipIntroSeconds: SkipIntroSeconds = SkipIntroSeconds.OFF,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -149,6 +158,7 @@ data class AppSettings(
         .put("chromeHideDelay", chromeHideDelay.name)
         .put("resumeBehavior", resumeBehavior.name)
         .put("seriesAutoNext", seriesAutoNext)
+        .put("skipIntroSeconds", skipIntroSeconds.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -226,6 +236,9 @@ class AppSettingsStore(context: Context) {
                 ResumeBehavior.valueOf(p[KEY_RESUME_BEHAVIOR] ?: ResumeBehavior.ASK.name)
             }.getOrDefault(ResumeBehavior.ASK),
             seriesAutoNext = p[KEY_SERIES_AUTO_NEXT] ?: false,
+            skipIntroSeconds = runCatching {
+                SkipIntroSeconds.valueOf(p[KEY_SKIP_INTRO] ?: SkipIntroSeconds.OFF.name)
+            }.getOrDefault(SkipIntroSeconds.OFF),
         )
     }
 
@@ -342,6 +355,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_SERIES_AUTO_NEXT] = value }
     }
 
+    suspend fun setSkipIntroSeconds(value: SkipIntroSeconds) {
+        store.edit { it[KEY_SKIP_INTRO] = value.name }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -377,6 +394,7 @@ class AppSettingsStore(context: Context) {
             }
             if (o.has("resumeBehavior")) p[KEY_RESUME_BEHAVIOR] = o.optString("resumeBehavior")
             if (o.has("seriesAutoNext")) p[KEY_SERIES_AUTO_NEXT] = o.optBoolean("seriesAutoNext", false)
+            if (o.has("skipIntroSeconds")) p[KEY_SKIP_INTRO] = o.optString("skipIntroSeconds", SkipIntroSeconds.OFF.name)
         }
     }
 
@@ -407,6 +425,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_CHROME_HIDE_DELAY = stringPreferencesKey("chrome_hide_delay")
         private val KEY_RESUME_BEHAVIOR = stringPreferencesKey("resume_behavior")
         private val KEY_SERIES_AUTO_NEXT = booleanPreferencesKey("series_auto_next")
+        private val KEY_SKIP_INTRO = stringPreferencesKey("skip_intro_seconds")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

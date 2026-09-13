@@ -67,6 +67,7 @@ import com.gketch.forge.data.HiddenFolder
 import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeBehavior
+import com.gketch.forge.data.SkipIntroSeconds
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
@@ -230,10 +231,32 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(14.dp))
                 EngineSwitchRow(
-                    title = "Series auto-next",
-                    subtitle = "When filename looks like SxxExx / Episode, play next file in the same folder",
+                    title = stringResource(R.string.series_auto_next),
+                    subtitle = stringResource(R.string.series_auto_next_sub),
                     checked = app.seriesAutoNext,
                     onChecked = { scope.launch { appStore.setSeriesAutoNext(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.skip_intro), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SkipIntroSeconds.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.skipIntroSeconds == opt,
+                            onClick = { scope.launch { appStore.setSkipIntroSeconds(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.skip_intro_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
                 Text("Resume playback", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
@@ -767,7 +790,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.21.0 · brightness boost · pinch zoom · night filter · series auto-next",
+                    text = "1.22.0 · volume boost gesture · skip intro · end card · library rescan · share snapshot",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

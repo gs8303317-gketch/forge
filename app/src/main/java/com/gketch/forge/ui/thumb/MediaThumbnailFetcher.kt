@@ -22,10 +22,6 @@ import coil.size.Dimension
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Loads MediaStore / SAF / file thumbnails that Coil cannot decode as plain images
- * (video content URIs, audio album art, document providers).
- */
 class MediaThumbnailFetcher(
     private val context: Context,
     private val data: Uri,
@@ -57,12 +53,12 @@ class MediaThumbnailFetcher(
     companion object {
         fun pixelSize(options: Options): Size {
             fun dim(d: Dimension, fallback: Int): Int = when (d) {
-                is Dimension.Pixels -> d.px.coerceIn(64, 1024)
+                is Dimension.Pixels -> d.px.coerceIn(64, 320)
                 else -> fallback
             }
             return Size(
-                dim(options.size.width, 256),
-                dim(options.size.height, 256),
+                dim(options.size.width, 192),
+                dim(options.size.height, 192),
             )
         }
 
@@ -71,14 +67,11 @@ class MediaThumbnailFetcher(
                 try {
                     return context.contentResolver.loadThumbnail(uri, size, CancellationSignal())
                 } catch (_: Exception) {
-                    // fall through
                 }
             }
-
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 mediaStoreVideoThumb(context, uri, size)?.let { return it }
             }
-
             decodeStream(context, uri, size)?.let { return it }
             return retrieverBitmap(context, uri, size)
         }

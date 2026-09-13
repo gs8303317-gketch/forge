@@ -23,9 +23,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.compose.AsyncImagePainter
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.gketch.forge.data.ForgeMediaItem
 import com.gketch.forge.data.MediaKind
@@ -39,9 +36,8 @@ fun ForgeThumbnail(
     progress: Float? = null,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    val model = thumbnailModel(item)
     ForgeThumbnailUri(
-        uri = model,
+        uri = thumbnailModel(item),
         isVideo = item.isVideo,
         modifier = modifier,
         progress = progress,
@@ -65,29 +61,20 @@ fun ForgeThumbnailUri(
             .background(ForgeSurfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
+        FallbackIcon(isVideo = isVideo, folder = folder)
         if (uri != null) {
-            SubcomposeAsyncImage(
+            AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(uri)
-                    .crossfade(true)
+                    .size(320)
+                    .crossfade(false)
+                    .allowRgb565(true)
+                    .memoryCacheKey(uri.toString())
                     .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
-            ) {
-                when (painter.state) {
-                    is AsyncImagePainter.State.Loading -> {
-                        // Grey box already acts as placeholder while loading
-                    }
-                    is AsyncImagePainter.State.Error,
-                    is AsyncImagePainter.State.Empty -> {
-                        FallbackIcon(isVideo = isVideo, folder = folder)
-                    }
-                    else -> SubcomposeAsyncImageContent()
-                }
-            }
-        } else {
-            FallbackIcon(isVideo = isVideo, folder = folder)
+            )
         }
         if (progress != null && progress > 0f) {
             LinearProgressIndicator(

@@ -369,25 +369,26 @@ fun BufferedProgressTrack(
     progress: Float,
     buffered: Float,
     modifier: Modifier = Modifier,
+    trackHeight: androidx.compose.ui.unit.Dp = 5.dp,
 ) {
-    Box(modifier = modifier.height(3.dp).fillMaxWidth()) {
+    Box(modifier = modifier.height(trackHeight).fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(3.dp)
-                .background(ForgeMuted.copy(alpha = 0.25f), RoundedCornerShape(2.dp)),
+                .height(trackHeight)
+                .background(ForgeMuted.copy(alpha = 0.28f), RoundedCornerShape(3.dp)),
         )
         Box(
             Modifier
                 .fillMaxWidth(buffered.coerceIn(0f, 1f))
-                .height(3.dp)
-                .background(ForgeAccent.copy(alpha = 0.35f), RoundedCornerShape(2.dp)),
+                .height(trackHeight)
+                .background(ForgeAccent.copy(alpha = 0.42f), RoundedCornerShape(3.dp)),
         )
         Box(
             Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .height(3.dp)
-                .background(ForgeAccent, RoundedCornerShape(2.dp)),
+                .height(trackHeight)
+                .background(ForgeAccent, RoundedCornerShape(3.dp)),
         )
     }
 }

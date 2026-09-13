@@ -118,6 +118,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -269,6 +270,7 @@ fun PlayerScreen(
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
+    var scrubFromSlider by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
     var surfaceBrightness by remember { mutableFloatStateOf(BrightnessStore.DEFAULT) }
     var videoZoom by remember { mutableFloatStateOf(1f) }
@@ -1181,20 +1183,26 @@ fun PlayerScreen(
                         },
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                val sideways = rotationDeg % 180 != 0
-                                val fit = if (sideways && size.width > 0f && size.height > 0f) {
-                                    maxOf(size.width / size.height, size.height / size.width)
+                            .then(
+                                if (rotationDeg != 0 || mirrorH || mirrorV || videoZoom > 1.01f) {
+                                    Modifier.graphicsLayer {
+                                        val sideways = rotationDeg % 180 != 0
+                                        val fit = if (sideways && size.width > 0f && size.height > 0f) {
+                                            maxOf(size.width / size.height, size.height / size.width)
+                                        } else {
+                                            1f
+                                        }
+                                        val z = videoZoom.coerceIn(1f, 6f)
+                                        rotationZ = rotationDeg.toFloat()
+                                        scaleX = (if (mirrorH) -fit else fit) * z
+                                        scaleY = (if (mirrorV) -fit else fit) * z
+                                        translationX = if (z > 1.01f) videoPan.x else 0f
+                                        translationY = if (z > 1.01f) videoPan.y else 0f
+                                    }
                                 } else {
-                                    1f
-                                }
-                                val z = videoZoom.coerceIn(1f, 6f)
-                                rotationZ = rotationDeg.toFloat()
-                                scaleX = (if (mirrorH) -fit else fit) * z
-                                scaleY = (if (mirrorV) -fit else fit) * z
-                                translationX = if (z > 1.01f) videoPan.x else 0f
-                                translationY = if (z > 1.01f) videoPan.y else 0f
-                            },
+                                    Modifier
+                                },
+                            ),
                     )
                 } else {
                     AudioArtwork(title = current?.title.orEmpty())
@@ -1245,6 +1253,13 @@ fun PlayerScreen(
                         else -> 48.dp.toPx()
                     }
                 }
+                // Slider scrub: large centered timecode (gesture SeekHud covers swipe seek).
+                if (scrubFromSlider && scrubbing && !inPip && isVideoSurface) {
+                    val dur = progress.durationMs
+                    val pos = if (dur > 0L) (scrubValue * dur).toLong() else 0L
+                    ScrubTimecodeHud(elapsedMs = pos, totalMs = dur)
+                }
+
                 if (!inPip) {
                     PlayerGestureLayer(
                         durationMs = durationMs,
@@ -1261,10 +1276,12 @@ fun PlayerScreen(
                                 progress.playbackState,
                             )
                             scrubbing = false
+                            scrubFromSlider = false
                         },
                         onSeekPreview = { target ->
                             val dur = durationMs.coerceAtLeast(1L)
                             scrubbing = true
+                            scrubFromSlider = false
                             scrubValue = (target.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
                             startVideoScrub(controller, scrubHold)
                             previewSeekTo(controller, target, scrubHold)
@@ -2019,6 +2036,7 @@ fun PlayerScreen(
                 },
                 onScrub = {
                     scrubbing = true
+                    scrubFromSlider = true
                     scrubValue = it
                     controlsHideToken++
                     val dur = progress.durationMs
@@ -2034,6 +2052,7 @@ fun PlayerScreen(
                     positionMs = seekTo
                     progress.updateProgress(seekTo, dur, progress.bufferedMs, progress.buffering, progress.playbackState)
                     scrubbing = false
+                    scrubFromSlider = false
                 },
                 onPrev = {
                     controller?.seekToPreviousMediaItem()
@@ -2996,6 +3015,11 @@ private fun PlayerControls(
     val durationMs = progress.durationMs
     val bufferedMs = progress.bufferedMs
 
+    val config = LocalConfiguration.current
+    val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val vPad = if (landscape) 2.dp else 4.dp
+    val scrubTouch = if (landscape) 28.dp else 32.dp
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3006,7 +3030,7 @@ private fun PlayerControls(
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onInteract,
             )
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = if (landscape) 14.dp else 10.dp, vertical = vPad),
     ) {
         val playProgress = if (durationMs > 0) {
             (if (scrubbing) scrubValue else positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
@@ -3014,10 +3038,12 @@ private fun PlayerControls(
         val bufferedFrac = if (durationMs > 0) {
             (bufferedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
         } else 0f
-        Box(Modifier.fillMaxWidth().height(22.dp)) {
+        val displayPos = if (scrubbing) (scrubValue * durationMs).toLong() else positionMs
+        Box(Modifier.fillMaxWidth().height(scrubTouch)) {
             BufferedProgressTrack(
                 progress = playProgress,
                 buffered = bufferedFrac,
+                trackHeight = if (landscape) 4.dp else 5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.Center)
@@ -3027,7 +3053,7 @@ private fun PlayerControls(
                 value = playProgress,
                 onValueChange = onScrub,
                 onValueChangeFinished = onScrubEnd,
-                modifier = Modifier.fillMaxWidth().height(22.dp),
+                modifier = Modifier.fillMaxWidth().height(scrubTouch),
                 colors = SliderDefaults.colors(
                     thumbColor = ForgeAccent,
                     activeTrackColor = Color.Transparent,
@@ -3035,7 +3061,6 @@ private fun PlayerControls(
                 ),
             )
         }
-        val displayPos = if (scrubbing) (scrubValue * durationMs).toLong() else positionMs
         val remainingMs = (durationMs - displayPos).coerceAtLeast(0L)
         Row(
             modifier = Modifier
@@ -3044,7 +3069,8 @@ private fun PlayerControls(
                 .clickable {
                     onToggleRemainingTime()
                     onInteract()
-                },
+                }
+                .padding(vertical = if (landscape) 0.dp else 1.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -3064,7 +3090,7 @@ private fun PlayerControls(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = if (landscape) Arrangement.SpaceBetween else Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onToggleShuffle) {
@@ -4053,13 +4079,23 @@ private fun applyForcedAspect(playerView: PlayerView, aspect: AspectMode) {
             frame.resizeMode = aspect.resizeMode
         }
         val forced = aspect.forcedRatio
-        if (forced != null && forced > 0f) {
-            frame.setAspectRatio(forced)
-        } else {
-            val vs = playerView.player?.videoSize
-            if (vs != null && vs.width > 0 && vs.height > 0) {
-                val ratio = vs.width * (if (vs.pixelWidthHeightRatio > 0f) vs.pixelWidthHeightRatio else 1f) / vs.height
-                frame.setAspectRatio(ratio)
+        val nextRatio = when {
+            forced != null && forced > 0f -> forced
+            else -> {
+                val vs = playerView.player?.videoSize
+                if (vs != null && vs.width > 0 && vs.height > 0) {
+                    vs.width * (if (vs.pixelWidthHeightRatio > 0f) vs.pixelWidthHeightRatio else 1f) / vs.height
+                } else {
+                    null
+                }
+            }
+        }
+        if (nextRatio != null) {
+            val tagKey = 0x46A50101
+            val prev = frame.getTag(tagKey) as? Float
+            if (prev == null || kotlin.math.abs(prev - nextRatio) > 0.0001f) {
+                frame.setAspectRatio(nextRatio)
+                frame.setTag(tagKey, nextRatio)
             }
         }
     } catch (_: Throwable) {
@@ -4187,6 +4223,29 @@ private suspend fun maybeSeriesAutoNext(
 }
 
 /** Undo any leftover 1.18 window dim so chrome stays at system brightness. */
+@Composable
+private fun ScrubTimecodeHud(elapsedMs: Long, totalMs: Long) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = if (totalMs > 0L) {
+                    "${formatDuration(elapsedMs)} / ${formatDuration(totalMs)}"
+                } else {
+                    formatDuration(elapsedMs)
+                },
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+            )
+        }
+    }
+}
+
 private fun clearWindowBrightness(activity: Activity?) {
     val window = activity?.window ?: return
     val lp = window.attributes
@@ -4202,7 +4261,13 @@ private class ScrubHold {
     var volume: Float = 1f
     var lastSeekMs: Long = -1L
     var lastSeekAt: Long = 0L
+    var pendingMs: Long = -1L
 }
+
+/** ~120–150ms throttle + keyframe seeks while dragging; EXACT settle on release. */
+private const val SCRUB_THROTTLE_MS = 130L
+private const val SCRUB_MIN_DELTA_MS = 350L
+private const val SCRUB_FORCE_DELTA_MS = 2_000L
 
 private fun startVideoScrub(player: Player?, hold: ScrubHold) {
     if (player == null || hold.active) return
@@ -4210,36 +4275,47 @@ private fun startVideoScrub(player: Player?, hold: ScrubHold) {
     hold.wasPlaying = player.isPlaying
     hold.volume = player.volume
     hold.lastSeekMs = -1L
-    runCatching { player.volume = 0f }
+    hold.pendingMs = -1L
+    // Mute once — do not thrash audio session / EQ attach on every tick.
+    if (hold.volume > 0f) runCatching { player.volume = 0f }
     if (hold.wasPlaying) runCatching { player.pause() }
     ForgeEngine.setScrubSeek(true)
 }
 
 private fun previewSeekTo(player: Player?, target: Long, hold: ScrubHold) {
     if (player == null) return
+    val clamped = target.coerceAtLeast(0L)
+    hold.pendingMs = clamped
     val now = SystemClock.elapsedRealtime()
-    if (hold.lastSeekMs >= 0L &&
-        abs(target - hold.lastSeekMs) < 250L &&
-        now - hold.lastSeekAt < 90L
-    ) {
-        return
+    val last = hold.lastSeekMs
+    val elapsed = now - hold.lastSeekAt
+    if (last >= 0L) {
+        val delta = abs(clamped - last)
+        val smallMove = delta < SCRUB_MIN_DELTA_MS && elapsed < SCRUB_THROTTLE_MS
+        val tooSoon = delta < SCRUB_FORCE_DELTA_MS && elapsed < SCRUB_THROTTLE_MS
+        if (smallMove || tooSoon) return
     }
-    hold.lastSeekMs = target
+    hold.lastSeekMs = clamped
     hold.lastSeekAt = now
-    runCatching { player.seekTo(target.coerceAtLeast(0L)) }
+    hold.pendingMs = -1L
+    runCatching { player.seekTo(clamped) }
 }
 
 private fun finishVideoScrub(player: Player?, target: Long, hold: ScrubHold) {
+    val clamped = target.coerceAtLeast(0L)
+    // Restore EXACT/DEFAULT before the settle seek so the final frame is accurate.
     runCatching { ForgeEngine.setScrubSeek(false) }
     if (player != null) {
-        runCatching { player.seekTo(target.coerceAtLeast(0L)) }
+        runCatching { player.seekTo(clamped) }
         if (hold.active) {
+            // Restore volume once (was muted for preview).
             runCatching { player.volume = hold.volume }
             if (hold.wasPlaying) runCatching { player.play() }
         }
     }
     hold.active = false
     hold.lastSeekMs = -1L
+    hold.pendingMs = -1L
 }
 
 

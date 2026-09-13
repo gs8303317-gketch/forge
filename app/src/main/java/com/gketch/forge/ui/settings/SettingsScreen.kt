@@ -564,7 +564,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Auto / Hardware / Software via MediaCodecSelector. ExtensionRendererMode stays OFF — FFmpeg decoder extension is not bundled (keeps CI free of NDK .so).",
+                    "Hardware preferred by default (Software fallback). Auto / Hardware / Software via MediaCodecSelector. ExtensionRendererMode stays OFF — no FFmpeg .so in CI.",
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )

@@ -18,13 +18,14 @@ enum class DecoderPreference(val label: String) {
 }
 
 enum class BufferPreset(val label: String, val minMs: Int, val maxMs: Int, val playbackMs: Int, val rebufferMs: Int) {
-    STANDARD("Standard", 15_000, 50_000, 2_500, 5_000),
-    LARGE("Large (network)", 30_000, 120_000, 3_500, 8_000),
+    // Slightly larger mins help scrubbing without emptying the forward buffer on 720p/x265.
+    STANDARD("Standard", 20_000, 60_000, 2_500, 5_000),
+    LARGE("Large (network)", 35_000, 130_000, 3_500, 8_000),
     EXTRA("Extra", 50_000, 180_000, 5_000, 10_000),
 }
 
 data class EnginePrefs(
-    val decoder: DecoderPreference = DecoderPreference.AUTO,
+    val decoder: DecoderPreference = DecoderPreference.HARDWARE,
     val buffer: BufferPreset = BufferPreset.LARGE,
     val preciseSeek: Boolean = true,
     val skipSilence: Boolean = false,
@@ -47,8 +48,8 @@ class ForgePlayerPrefsStore(context: Context) {
     val prefs: Flow<EnginePrefs> = store.data.map { p ->
         val decoded = EnginePrefs(
             decoder = runCatching {
-                DecoderPreference.valueOf(p[KEY_DECODER] ?: DecoderPreference.AUTO.name)
-            }.getOrDefault(DecoderPreference.AUTO),
+                DecoderPreference.valueOf(p[KEY_DECODER] ?: DecoderPreference.HARDWARE.name)
+            }.getOrDefault(DecoderPreference.HARDWARE),
             buffer = runCatching {
                 BufferPreset.valueOf(p[KEY_BUFFER] ?: BufferPreset.LARGE.name)
             }.getOrDefault(BufferPreset.LARGE),

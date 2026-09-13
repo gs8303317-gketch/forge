@@ -359,7 +359,7 @@ fun PlayerGestureLayer(
             },
     ) {
         when (kind) {
-            GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs)
+            GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs, totalMs = durationMs)
             GestureKind.Dismiss -> DismissHud()
             GestureKind.Volume -> SideHud(
                 icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
@@ -452,14 +452,14 @@ private fun DoubleTapHud(back: Boolean, seconds: Int) {
 }
 
 @Composable
-private fun SeekHud(previewMs: Long, fromMs: Long) {
+private fun SeekHud(previewMs: Long, fromMs: Long, totalMs: Long = 0L) {
     val delta = previewMs - fromMs
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.65f))
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .background(Color.Black.copy(alpha = 0.72f))
+                .padding(horizontal = 22.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
@@ -469,13 +469,17 @@ private fun SeekHud(previewMs: Long, fromMs: Long) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = formatDuration(previewMs),
-                style = MaterialTheme.typography.titleMedium,
+                text = if (totalMs > 0L) {
+                    "${formatDuration(previewMs)} / ${formatDuration(totalMs)}"
+                } else {
+                    formatDuration(previewMs)
+                },
+                style = MaterialTheme.typography.headlineSmall,
                 color = Color.White,
             )
             Text(
                 text = (if (delta >= 0) "+" else "−") + formatDuration(abs(delta)),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = ForgeAccent,
             )
         }

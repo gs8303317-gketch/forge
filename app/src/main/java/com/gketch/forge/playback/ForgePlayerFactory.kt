@@ -23,7 +23,7 @@ object ForgePlayerFactory {
                 prefs.buffer.playbackMs,
                 prefs.buffer.rebufferMs,
             )
-            .setBackBuffer(/* backBufferDurationMs = */ 30_000, /* retainBackBufferFromKeyframe = */ true)
+            .setBackBuffer(/* backBufferDurationMs = */ 60_000, /* retainBackBufferFromKeyframe = */ true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 

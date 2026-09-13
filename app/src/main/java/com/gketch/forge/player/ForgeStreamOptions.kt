@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 /**
  * Process-local stream network options (User-Agent + timeouts) for ExoPlayer HTTP.

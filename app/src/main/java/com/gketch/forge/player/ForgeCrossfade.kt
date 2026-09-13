@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi

@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 /**
  * Live snapshot for headset / BT unplug pause (AUDIO_BECOMING_NOISY).

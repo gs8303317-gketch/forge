@@ -2,8 +2,25 @@
 
 Premium Android media player (Kotlin + Jetpack Compose + Media3).
 
+
+## Architecture (1.28.0)
+
+Package layout after the software-engineering refactor (behavior unchanged):
+
+- `domain/` — pure models (`AppSettings` enums, `ForgeMediaItem`, folders, …); `data/` keeps typealiases for stable imports
+- `data/` — DataStore repos, MediaStore/SAF scanners, lyrics/sidecar IO
+- `player/` — Media3 engine, FX, prefs, `PlaybackService` (renamed from `playback/`)
+- `di/` — thin `ForgeContainer` service locator (optional; call sites may still construct stores)
+- `ui/library/` — `LibraryScreen` + `LibraryScreenExtras` (bodies/cards/dialogs)
+- `ui/player/` — `PlayerScreen` + focused chrome/dialogs/tracks/scrub/helpers + models
+- `ui/settings/` — `SettingsScreen` + `SettingsComponents`
+- `cast/`, `widget/`, `tile/` — unchanged
+
+applicationId remains `com.gketch.forge`.
+
 ## Features
 
+- Architecture 1.28.0: package tidy (`player/`, `domain/`, `di/`), split Player/Library/Settings god files — no intentional UX change
 - Local video & audio library via MediaStore (thumbnail grid + list)
 - Reliable MediaStore/SAF thumbnails (`loadThumbnail` + Coil fetcher; album art for audio)
 - Immersive player (hides status + navigation bars while playing; restores on leave)

@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 import android.media.audiofx.LoudnessEnhancer
 import java.util.concurrent.atomic.AtomicReference

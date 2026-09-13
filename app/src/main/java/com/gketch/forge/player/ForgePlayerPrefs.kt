@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey

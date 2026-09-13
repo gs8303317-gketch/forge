@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Virtualizer

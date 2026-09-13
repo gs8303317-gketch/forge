@@ -13,7 +13,7 @@ import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.gketch.forge.playback.PlaybackService
+import com.gketch.forge.player.PlaybackService
 
 @Composable
 fun rememberPlayerController(): MediaController? {

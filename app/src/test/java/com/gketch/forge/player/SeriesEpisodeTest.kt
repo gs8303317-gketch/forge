@@ -1,4 +1,4 @@
-package com.gketch.forge.playback
+package com.gketch.forge.player
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

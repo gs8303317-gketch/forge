@@ -33,7 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gketch.forge.data.MediaBookmark
-import com.gketch.forge.playback.ForgeLoudness
+import com.gketch.forge.player.ForgeLoudness
 import com.gketch.forge.ui.library.formatDuration
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack

@@ -75,13 +75,13 @@ import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
 import com.gketch.forge.data.SleepEndAction
-import com.gketch.forge.playback.BufferPreset
-import com.gketch.forge.playback.DecoderPreference
-import com.gketch.forge.playback.EnginePrefs
-import com.gketch.forge.playback.ForgeCrossfade
-import com.gketch.forge.playback.ForgeEngine
-import com.gketch.forge.playback.ForgeLoudness
-import com.gketch.forge.playback.ForgePlayerPrefsStore
+import com.gketch.forge.player.BufferPreset
+import com.gketch.forge.player.DecoderPreference
+import com.gketch.forge.player.EnginePrefs
+import com.gketch.forge.player.ForgeCrossfade
+import com.gketch.forge.player.ForgeEngine
+import com.gketch.forge.player.ForgeLoudness
+import com.gketch.forge.player.ForgePlayerPrefsStore
 import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeGraphite
@@ -942,7 +942,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.27.0 · stability / polish · VLC-like settings sections",
+                    text = "1.28.0 · software-engineering refactor · clearer packages",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
@@ -1060,62 +1060,3 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
 }
 
-@Composable
-private fun SettingsCard(title: String, content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(ForgeGraphite)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.labelLarge,
-            color = ForgeAccent,
-        )
-        Spacer(Modifier.height(8.dp))
-        content()
-    }
-}
-
-@Composable
-private fun EngineSwitchRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onChecked: (Boolean) -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HorizontalDivider(color = ForgeMuted.copy(alpha = 0.18f), thickness = 0.5.dp)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text(title, color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                Text(subtitle, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-            }
-            Switch(
-                checked = checked,
-                onCheckedChange = onChecked,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
-                    checkedTrackColor = ForgeAccent,
-                    uncheckedThumbColor = ForgeMuted,
-                    uncheckedTrackColor = ForgeBlack,
-                ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun engineChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = ForgeAccent,
-    selectedLabelColor = Color.Black,
-    containerColor = ForgeBlack,
-    labelColor = Color.White,
-)

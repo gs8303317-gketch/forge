@@ -25,7 +25,7 @@ import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.AppSettings
 import com.gketch.forge.data.AppSettingsStore
 import com.gketch.forge.data.isPlayableStreamUrl
-import com.gketch.forge.playback.ForgeStreamOptions
+import com.gketch.forge.player.ForgeStreamOptions
 import com.gketch.forge.ui.navigation.ForgeNav
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeTheme

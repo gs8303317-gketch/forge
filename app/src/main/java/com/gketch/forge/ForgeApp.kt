@@ -7,12 +7,17 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.gketch.forge.cast.ForgeCast
 import com.gketch.forge.ui.thumb.MediaThumbnailFetcher
+import com.gketch.forge.di.ForgeContainer
 import com.gketch.forge.widget.PlaybackWidgetUpdater
 
 class ForgeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         // Never crash the process from Application.onCreate — all init is best-effort.
+        try {
+            ForgeContainer.get(this)
+        } catch (_: Throwable) {
+        }
         try {
             ForgeCast.init(this)
         } catch (_: Throwable) {

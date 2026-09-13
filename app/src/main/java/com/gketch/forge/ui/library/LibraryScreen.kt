@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -102,6 +101,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -178,6 +180,7 @@ fun LibraryScreen(
     val scope = rememberCoroutineScope()
     var sortMenu by remember { mutableStateOf(false) }
     var overflowMenu by remember { mutableStateOf(false) }
+    var searchExpanded by remember { mutableStateOf(false) }
     val permitted = hasMediaPermission(context)
     val activity = remember(context) { context.findActivity() }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -252,6 +255,9 @@ fun LibraryScreen(
         if (openPlaylistsTick > 0) viewModel.setTab(LibraryTab.PLAYLISTS)
     }
 
+    LaunchedEffect(state.query) {
+        if (state.query.isNotEmpty()) searchExpanded = true
+    }
     LaunchedEffect(m3uMessage) {
         val msg = m3uMessage ?: return@LaunchedEffect
         snackbar.showSnackbar(msg)
@@ -300,7 +306,13 @@ fun LibraryScreen(
                                 }
                             },
                             icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) },
+                            label = {
+                                Text(
+                                    label,
+                                    maxLines = 1,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = ForgeAccent,
                                 selectedTextColor = ForgeAccent,
@@ -314,223 +326,274 @@ fun LibraryScreen(
             }
         },
         topBar = {
+            val sectionTitle = when {
+                state.selecting -> "${state.selectedKeys.size} selected"
+                state.tab == LibraryTab.VIDEO -> stringResource(R.string.nav_video)
+                state.tab == LibraryTab.AUDIO -> stringResource(R.string.nav_audio)
+                state.tab == LibraryTab.PLAYLISTS -> stringResource(R.string.nav_playlists)
+                state.tab == LibraryTab.BROWSE -> stringResource(R.string.nav_browse)
+                else -> stringResource(R.string.app_name)
+            }
+            val showMediaChrome = state.tab == LibraryTab.VIDEO ||
+                state.tab == LibraryTab.AUDIO ||
+                (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
-                    .background(ForgeBlack)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .background(ForgeBlack),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (state.selecting) {
-                        IconButton(onClick = { viewModel.clearSelection() }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Clear selection", tint = Color.White)
-                        }
+                TopAppBar(
+                    title = {
                         Text(
-                            text = "${state.selectedKeys.size} selected",
+                            text = sectionTitle,
                             style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f),
+                            color = if (state.selecting) Color.White else ForgeAccent,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(min = 72.dp),
                         )
-                        IconButton(
-                            onClick = { viewModel.favoriteSelected() },
-                            enabled = state.selectedKeys.isNotEmpty(),
-                        ) {
-                            Icon(Icons.Rounded.Star, contentDescription = "Add to favorites", tint = ForgeAccent)
+                    },
+                    navigationIcon = {
+                        if (state.selecting) {
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear selection", tint = Color.White)
+                            }
                         }
-                        IconButton(
-                            onClick = { addSelectedToPlaylist = true },
-                            enabled = state.selectedKeys.isNotEmpty(),
-                        ) {
-                            Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "Add to playlist", tint = ForgeAccent)
-                        }
-                    } else {
-                        Text(
-                            text = "Forge",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = ForgeAccent,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (state.tab == LibraryTab.VIDEO ||
-                            state.tab == LibraryTab.AUDIO ||
-                            (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
-                        ) {
+                    },
+                    actions = {
+                        if (state.selecting) {
+                            IconButton(
+                                onClick = { viewModel.favoriteSelected() },
+                                enabled = state.selectedKeys.isNotEmpty(),
+                            ) {
+                                Icon(Icons.Rounded.Star, contentDescription = "Add to favorites", tint = ForgeAccent)
+                            }
+                            IconButton(
+                                onClick = { addSelectedToPlaylist = true },
+                                enabled = state.selectedKeys.isNotEmpty(),
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "Add to playlist", tint = ForgeAccent)
+                            }
+                        } else {
                             IconButton(onClick = {
-                                viewModel.setLayout(
-                                    if (state.layout == LibraryLayout.GRID) LibraryLayout.LIST
-                                    else LibraryLayout.GRID,
-                                )
+                                searchExpanded = !searchExpanded
+                                if (!searchExpanded && state.query.isNotEmpty()) {
+                                    viewModel.onQueryChange("")
+                                }
                             }) {
                                 Icon(
-                                    if (state.layout == LibraryLayout.GRID) Icons.Rounded.ViewList
-                                    else Icons.Rounded.GridView,
-                                    contentDescription = "Toggle layout",
+                                    if (searchExpanded) Icons.Rounded.Close else Icons.Rounded.Search,
+                                    contentDescription = if (searchExpanded) "Close search" else "Search",
                                     tint = ForgeMuted,
                                 )
                             }
-                            Box {
-                                IconButton(onClick = { sortMenu = true }) {
-                                    Icon(Icons.Rounded.Sort, contentDescription = "Sort", tint = ForgeMuted)
+                            if (showMediaChrome) {
+                                IconButton(onClick = {
+                                    viewModel.setLayout(
+                                        if (state.layout == LibraryLayout.GRID) LibraryLayout.LIST
+                                        else LibraryLayout.GRID,
+                                    )
+                                }) {
+                                    Icon(
+                                        if (state.layout == LibraryLayout.GRID) Icons.Rounded.ViewList
+                                        else Icons.Rounded.GridView,
+                                        contentDescription = "Toggle layout",
+                                        tint = ForgeMuted,
+                                    )
                                 }
-                                DropdownMenu(
-                                    expanded = sortMenu,
-                                    onDismissRequest = { sortMenu = false },
-                                    containerColor = ForgeGraphite,
-                                ) {
-                                    LibrarySort.entries.forEach { sort ->
-                                        DropdownMenuItem(
-                                            text = { Text(sort.label, color = Color.White) },
-                                            onClick = {
-                                                viewModel.setSort(sort)
-                                                sortMenu = false
-                                            },
-                                            trailingIcon = {
-                                                if (state.sort == sort) {
-                                                    Icon(Icons.Rounded.Check, null, tint = ForgeAccent)
-                                                }
-                                            },
-                                        )
+                                Box {
+                                    IconButton(onClick = { sortMenu = true }) {
+                                        Icon(Icons.Rounded.Sort, contentDescription = "Sort", tint = ForgeMuted)
+                                    }
+                                    DropdownMenu(
+                                        expanded = sortMenu,
+                                        onDismissRequest = { sortMenu = false },
+                                        containerColor = ForgeGraphite,
+                                    ) {
+                                        LibrarySort.entries.forEach { sort ->
+                                            DropdownMenuItem(
+                                                text = { Text(sort.label, color = Color.White) },
+                                                onClick = {
+                                                    viewModel.setSort(sort)
+                                                    sortMenu = false
+                                                },
+                                                trailingIcon = {
+                                                    if (state.sort == sort) {
+                                                        Icon(Icons.Rounded.Check, null, tint = ForgeAccent)
+                                                    }
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
-                        if (state.tab == LibraryTab.PLAYLISTS) {
-                            IconButton(onClick = { showCreatePlaylist = true }) {
-                                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = "New playlist", tint = ForgeMuted)
-                            }
-                            IconButton(onClick = {
-                                importM3uLauncher.launch(
-                                    arrayOf(
-                                        "audio/x-mpegurl",
-                                        "application/vnd.apple.mpegurl",
-                                        "text/plain",
-                                        "*/*",
-                                    ),
-                                )
-                            }) {
-                                Icon(Icons.Rounded.FileUpload, contentDescription = "Import M3U", tint = ForgeMuted)
-                            }
-                        }
-                        if (state.tab == LibraryTab.BROWSE && state.selectedFolder == null) {
-                            IconButton(onClick = { safTreeLauncher.launch(null) }) {
-                                Icon(Icons.Rounded.CreateNewFolder, contentDescription = "Add folder", tint = ForgeMuted)
-                            }
-                            IconButton(onClick = { showStreamDialog = true }) {
-                                Icon(Icons.Rounded.Link, contentDescription = "Add stream", tint = ForgeMuted)
-                            }
-                        }
-                        if ((state.tab == LibraryTab.VIDEO ||
-                                (state.tab == LibraryTab.AUDIO && state.audioBrowseMode == AudioBrowseMode.SONGS && state.selectedAudioGroup == null)) &&
-                            state.filtered.isNotEmpty()
-                        ) {
-                            IconButton(
-                                onClick = { onPlay(state.filtered.shuffled(), 0) },
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Shuffle,
-                                    contentDescription = stringResource(R.string.shuffle_all),
-                                    tint = ForgeAccent,
-                                )
-                            }
-                        }
-                        if (state.tab == LibraryTab.AUDIO && state.selectedAudioGroup != null &&
-                            state.selectedAudioGroup!!.tracks.isNotEmpty()
-                        ) {
-                            IconButton(
-                                onClick = { onPlay(state.selectedAudioGroup!!.tracks.shuffled(), 0) },
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Shuffle,
-                                    contentDescription = stringResource(R.string.shuffle_all),
-                                    tint = ForgeAccent,
-                                )
-                            }
-                        }
-                        IconButton(onClick = { viewModel.forceRescan() }) {
-                            Icon(
-                                Icons.Rounded.Refresh,
-                                contentDescription = stringResource(R.string.library_rescan),
-                                tint = ForgeMuted,
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { overflowMenu = true }) {
-                                Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = ForgeMuted)
-                            }
-                            DropdownMenu(
-                                expanded = overflowMenu,
-                                onDismissRequest = { overflowMenu = false },
-                                containerColor = ForgeGraphite,
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.library_rescan), color = Color.White) },
-                                    onClick = {
-                                        overflowMenu = false
-                                        viewModel.forceRescan()
-                                    },
-                                    leadingIcon = { Icon(Icons.Rounded.Refresh, null, tint = ForgeAccent) },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Open stream", color = Color.White) },
-                                    onClick = {
-                                        overflowMenu = false
-                                        showStreamDialog = true
-                                    },
-                                    leadingIcon = { Icon(Icons.Rounded.Link, null, tint = ForgeAccent) },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Playback history", color = Color.White) },
-                                    onClick = {
-                                        overflowMenu = false
-                                        onOpenHistory()
-                                    },
-                                    leadingIcon = { Icon(Icons.Rounded.History, null, tint = ForgeAccent) },
-                                )
-                                if (state.recent.isNotEmpty()) {
+                            Box {
+                                IconButton(onClick = { overflowMenu = true }) {
+                                    Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = ForgeMuted)
+                                }
+                                DropdownMenu(
+                                    expanded = overflowMenu,
+                                    onDismissRequest = { overflowMenu = false },
+                                    containerColor = ForgeGraphite,
+                                ) {
+                                    if ((state.tab == LibraryTab.VIDEO ||
+                                            (state.tab == LibraryTab.AUDIO &&
+                                                state.audioBrowseMode == AudioBrowseMode.SONGS &&
+                                                state.selectedAudioGroup == null)) &&
+                                        state.filtered.isNotEmpty()
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.shuffle_all), color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                onPlay(state.filtered.shuffled(), 0)
+                                            },
+                                            leadingIcon = { Icon(Icons.Rounded.Shuffle, null, tint = ForgeAccent) },
+                                        )
+                                    }
+                                    if (state.tab == LibraryTab.AUDIO &&
+                                        state.selectedAudioGroup != null &&
+                                        state.selectedAudioGroup!!.tracks.isNotEmpty()
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.shuffle_all), color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                onPlay(state.selectedAudioGroup!!.tracks.shuffled(), 0)
+                                            },
+                                            leadingIcon = { Icon(Icons.Rounded.Shuffle, null, tint = ForgeAccent) },
+                                        )
+                                    }
+                                    if (state.tab == LibraryTab.PLAYLISTS) {
+                                        DropdownMenuItem(
+                                            text = { Text("New playlist", color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                showCreatePlaylist = true
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = ForgeAccent)
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Import M3U", color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                importM3uLauncher.launch(
+                                                    arrayOf(
+                                                        "audio/x-mpegurl",
+                                                        "application/vnd.apple.mpegurl",
+                                                        "text/plain",
+                                                        "*/*",
+                                                    ),
+                                                )
+                                            },
+                                            leadingIcon = { Icon(Icons.Rounded.FileUpload, null, tint = ForgeAccent) },
+                                        )
+                                    }
+                                    if (state.tab == LibraryTab.BROWSE && state.selectedFolder == null) {
+                                        DropdownMenuItem(
+                                            text = { Text("Add folder", color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                safTreeLauncher.launch(null)
+                                            },
+                                            leadingIcon = {
+                                                Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent)
+                                            },
+                                        )
+                                    }
                                     DropdownMenuItem(
-                                        text = { Text("Clear history", color = Color.White) },
+                                        text = { Text(stringResource(R.string.library_rescan), color = Color.White) },
                                         onClick = {
                                             overflowMenu = false
-                                            showClearHistory = true
+                                            viewModel.forceRescan()
                                         },
-                                        leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = ForgeAccent) },
+                                        leadingIcon = { Icon(Icons.Rounded.Refresh, null, tint = ForgeAccent) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Open stream", color = Color.White) },
+                                        onClick = {
+                                            overflowMenu = false
+                                            showStreamDialog = true
+                                        },
+                                        leadingIcon = { Icon(Icons.Rounded.Link, null, tint = ForgeAccent) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Playback history", color = Color.White) },
+                                        onClick = {
+                                            overflowMenu = false
+                                            onOpenHistory()
+                                        },
+                                        leadingIcon = { Icon(Icons.Rounded.History, null, tint = ForgeAccent) },
+                                    )
+                                    if (state.recent.isNotEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Clear history", color = Color.White) },
+                                            onClick = {
+                                                overflowMenu = false
+                                                showClearHistory = true
+                                            },
+                                            leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = ForgeAccent) },
+                                        )
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.settings), color = Color.White) },
+                                        onClick = {
+                                            overflowMenu = false
+                                            onOpenSettings()
+                                        },
+                                        leadingIcon = { Icon(Icons.Rounded.Settings, null, tint = ForgeAccent) },
                                     )
                                 }
                             }
                         }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.settings), tint = ForgeMuted)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = viewModel::onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = {
-                        Text(
-                            if (state.selectedFolder != null) stringResource(R.string.search_folder_hint)
-                            else stringResource(R.string.search_hint),
-                        )
                     },
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Search, contentDescription = null, tint = ForgeMuted)
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = fieldColors(),
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = ForgeBlack,
+                        titleContentColor = ForgeAccent,
+                        actionIconContentColor = ForgeMuted,
+                        navigationIconContentColor = Color.White,
+                    ),
                 )
+                if (searchExpanded || state.query.isNotEmpty()) {
+                    OutlinedTextField(
+                        value = state.query,
+                        onValueChange = viewModel::onQueryChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                if (state.selectedFolder != null) stringResource(R.string.search_folder_hint)
+                                else stringResource(R.string.search_hint),
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Search, contentDescription = null, tint = ForgeMuted)
+                        },
+                        trailingIcon = {
+                            if (state.query.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onQueryChange("") }) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = ForgeMuted)
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors(),
+                    )
+                }
                 if (state.tab == LibraryTab.VIDEO ||
                     (state.tab == LibraryTab.AUDIO && state.audioBrowseMode == AudioBrowseMode.SONGS) ||
                     (state.tab == LibraryTab.BROWSE && state.selectedFolder != null)
                 ) {
-                    Spacer(Modifier.height(8.dp))
                     Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         WatchedFilter.entries.forEach { wf ->
@@ -544,6 +607,7 @@ fun LibraryScreen(
                                             WatchedFilter.WATCHED -> stringResource(R.string.watched)
                                             WatchedFilter.UNWATCHED -> stringResource(R.string.unwatched)
                                         },
+                                        maxLines = 1,
                                     )
                                 },
                                 colors = filterColors(),
@@ -552,15 +616,18 @@ fun LibraryScreen(
                     }
                 }
                 if (state.tab == LibraryTab.AUDIO && state.selectedAudioGroup == null) {
-                    Spacer(Modifier.height(8.dp))
-                    AudioBrowseModeChips(
-                        mode = state.audioBrowseMode,
-                        onMode = viewModel::setAudioBrowseMode,
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        AudioBrowseModeChips(
+                            mode = state.audioBrowseMode,
+                            onMode = viewModel::setAudioBrowseMode,
+                        )
+                    }
                 }
                 if (!permitted) {
-                    Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = onRequestPermission) {
+                    TextButton(
+                        onClick = onRequestPermission,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    ) {
                         Text("Grant media access to scan this device", color = ForgeAccent)
                     }
                 }
@@ -1670,10 +1737,15 @@ private fun MediaGridCard(
                     if (!selecting) menu = true
                 },
             )
-            .padding(8.dp),
+            .padding(6.dp),
     ) {
         Box {
-            ThumbBox(item = item, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
+            ThumbBox(
+                item = item,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(if (item.isVideo) 16f / 9f else 1f),
+            )
             if (selected) {
                 Icon(
                     Icons.Rounded.CheckCircle,
@@ -1730,19 +1802,20 @@ private fun MediaGridCard(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = item.title,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = Color.White,
             maxLines = 2,
+            softWrap = true,
             overflow = TextOverflow.Ellipsis,
-            minLines = 2,
         )
         Text(
             text = formatDuration(item.durationMs),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelSmall,
             color = ForgeMuted,
+            maxLines = 1,
         )
     }
 }

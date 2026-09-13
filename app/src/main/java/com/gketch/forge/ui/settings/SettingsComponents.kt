@@ -95,16 +95,16 @@ internal fun SettingsCard(title: String, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(0.dp))
             .background(ForgeGraphite)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Text(
-            title,
-            style = MaterialTheme.typography.labelLarge,
+            title.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
             color = ForgeAccent,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         content()
     }
 }

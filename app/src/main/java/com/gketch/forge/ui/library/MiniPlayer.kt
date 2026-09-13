@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -148,7 +149,20 @@ fun MiniPlayerBar(
                 Icon(
                     if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (playing) "Pause" else "Play",
-                    tint = ForgeAccent,
+                    tint = Color.White,
+                )
+            }
+            IconButton(
+                onClick = {
+                    val p = controller ?: return@IconButton
+                    if (p.hasNextMediaItem()) p.seekToNextMediaItem()
+                },
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.SkipNext,
+                    contentDescription = "Next",
+                    tint = Color.White.copy(alpha = 0.92f),
                 )
             }
             IconButton(
@@ -157,12 +171,12 @@ fun MiniPlayerBar(
                     visible = false
                     onStopped()
                 },
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(40.dp),
             ) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Stop",
-                    tint = Color.White.copy(alpha = 0.85f),
+                    tint = Color.White.copy(alpha = 0.72f),
                 )
             }
         }

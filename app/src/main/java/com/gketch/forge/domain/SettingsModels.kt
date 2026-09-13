@@ -70,13 +70,11 @@ enum class CrossfadeDuration(val label: String, val seconds: Int) {
     SEC_3("3s", 3),
 }
 
-
 enum class ResumeBehavior(val label: String) {
     ASK("Ask every time"),
     ALWAYS_CONTINUE("Always continue"),
     ALWAYS_START_OVER("Always start over"),
 }
-
 
 enum class SkipIntroSeconds(val label: String, val seconds: Int) {
     OFF("Off", 0),
@@ -98,7 +96,6 @@ enum class SubtitleOutline(val label: String) {
     SHADOW("Shadow"),
 }
 
-
 enum class AudioFocusBehavior(val label: String) {
     PAUSE("Pause others"),
     DUCK("Duck others"),
@@ -111,13 +108,12 @@ enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
     NEVER("Never", null),
 }
 
-
 data class AppSettings(
     val seekSeconds: Int = 10,
     val autoplayNext: Boolean = true,
     val librarySort: LibrarySort = LibrarySort.NAME,
     val subtitleColor: SubtitleColor = SubtitleColor.WHITE,
-    val subtitleBackground: SubtitleBackground = SubtitleBackground.SEMI,
+    val subtitleBackground: SubtitleBackground = SubtitleBackground.NONE,
     val subtitlePosition: SubtitlePosition = SubtitlePosition.BOTTOM,
     val subtitleSizeSp: Float = 20f,
     val accentPreset: AccentPreset = AccentPreset.EMBER,
@@ -135,7 +131,7 @@ data class AppSettings(
     val gaplessPlayback: Boolean = true,
     val crossfade: CrossfadeDuration = CrossfadeDuration.OFF,
     val loudnessNormalize: Boolean = false,
-    val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_5_5,
+    val chromeHideDelay: ChromeHideDelay = ChromeHideDelay.SEC_3,
     val resumeBehavior: ResumeBehavior = ResumeBehavior.ASK,
     val seriesAutoNext: Boolean = false,
     val skipIntroSeconds: SkipIntroSeconds = SkipIntroSeconds.OFF,

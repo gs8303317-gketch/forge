@@ -422,6 +422,33 @@ fun LibraryScreen(
                                 Icon(Icons.Rounded.Link, contentDescription = "Add stream", tint = ForgeMuted)
                             }
                         }
+                        if ((state.tab == LibraryTab.VIDEO ||
+                                (state.tab == LibraryTab.AUDIO && state.audioBrowseMode == AudioBrowseMode.SONGS && state.selectedAudioGroup == null)) &&
+                            state.filtered.isNotEmpty()
+                        ) {
+                            IconButton(
+                                onClick = { onPlay(state.filtered.shuffled(), 0) },
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Shuffle,
+                                    contentDescription = stringResource(R.string.shuffle_all),
+                                    tint = ForgeAccent,
+                                )
+                            }
+                        }
+                        if (state.tab == LibraryTab.AUDIO && state.selectedAudioGroup != null &&
+                            state.selectedAudioGroup!!.tracks.isNotEmpty()
+                        ) {
+                            IconButton(
+                                onClick = { onPlay(state.selectedAudioGroup!!.tracks.shuffled(), 0) },
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Shuffle,
+                                    contentDescription = stringResource(R.string.shuffle_all),
+                                    tint = ForgeAccent,
+                                )
+                            }
+                        }
                         IconButton(onClick = { viewModel.forceRescan() }) {
                             Icon(
                                 Icons.Rounded.Refresh,
@@ -572,8 +599,10 @@ fun LibraryScreen(
                         Column(Modifier.fillMaxSize().padding(innerPadding)) {
                             AudioGroupTracksHeader(
                                 group = group,
+                                mode = state.audioBrowseMode,
                                 onBack = viewModel::closeAudioGroup,
                                 onPlayAll = { onPlay(group.tracks, 0) },
+                                onShuffleAll = { onPlay(group.tracks.shuffled(), 0) },
                             )
                             LazyColumn(
                                 state = audioGroupTracksState,
@@ -631,6 +660,8 @@ fun LibraryScreen(
                 folderGridState = folderGridState,
                 onOpenFolder = viewModel::openFolder,
                 onCloseFolder = viewModel::closeFolder,
+                onFolderSubPath = viewModel::setFolderSubPath,
+                onOpenSubfolder = viewModel::openFolderSubfolder,
                 onPlay = onPlay,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddToPlaylist = { addToPlaylistItem = it },
@@ -1061,6 +1092,8 @@ private fun FoldersBody(
     folderGridState: LazyGridState,
     onOpenFolder: (MediaFolder) -> Unit,
     onCloseFolder: () -> Unit,
+    onFolderSubPath: (String) -> Unit,
+    onOpenSubfolder: (String) -> Unit,
     onPlay: (List<ForgeMediaItem>, Int) -> Unit,
     onToggleFavorite: (ForgeMediaItem) -> Unit,
     onAddToPlaylist: (ForgeMediaItem) -> Unit,
@@ -1142,23 +1175,46 @@ private fun FoldersBody(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                IconButton(onClick = onCloseFolder) {
+                IconButton(onClick = {
+                    if (state.folderSubPath.isNotEmpty()) {
+                        val parts = state.folderSubPath.trim('/').split('/').filter { it.isNotEmpty() }
+                        val parent = parts.dropLast(1).joinToString("/")
+                        onFolderSubPath(parent)
+                    } else {
+                        onCloseFolder()
+                    }
+                }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = Color.White)
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    FolderBreadcrumbs(
+                        folderName = folder.name,
+                        subPath = state.folderSubPath,
+                        onBrowse = onCloseFolder,
+                        onFolderRoot = { onFolderSubPath("") },
+                        onSubPath = onFolderSubPath,
+                    )
                     Text(
-                        if (state.query.isBlank()) "${folder.itemCount} items"
-                        else "${state.folderItems.size} of ${state.folderItemsAll.size} items",
+                        if (state.query.isBlank()) {
+                            val n = state.folderItems.size + state.folderSubfolders.size
+                            "$n items"
+                        } else {
+                            "${state.folderItems.size} of ${state.folderItemsAll.size} items"
+                        },
                         color = ForgeMuted,
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 IconButton(
                     onClick = {
-                        if (state.folderItems.isNotEmpty()) onPlay(state.folderItems.shuffled(), 0)
+                        val queue = if (state.query.isBlank() && state.folderSubPath.isEmpty()) {
+                            state.folderItemsAll
+                        } else {
+                            state.folderItems
+                        }
+                        if (queue.isNotEmpty()) onPlay(queue.shuffled(), 0)
                     },
-                    enabled = state.folderItems.isNotEmpty(),
+                    enabled = state.folderItemsAll.isNotEmpty(),
                 ) {
                     Icon(Icons.Rounded.Shuffle, contentDescription = stringResource(R.string.random_play_folder), tint = ForgeAccent)
                 }
@@ -1176,6 +1232,9 @@ private fun FoldersBody(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    items(state.folderSubfolders, key = { "sub-$it" }) { name ->
+                        SubfolderRow(name = name, onClick = { onOpenSubfolder(name) })
+                    }
                     itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
                         MediaRow(
                             item = item,
@@ -1204,6 +1263,9 @@ private fun FoldersBody(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    items(state.folderSubfolders, key = { "sub-$it" }) { name ->
+                        SubfolderRow(name = name, onClick = { onOpenSubfolder(name) })
+                    }
                     itemsIndexed(state.folderItems, key = { _, item -> item.stableKey() }) { index, item ->
                         MediaGridCard(
                             item = item,
@@ -1225,6 +1287,66 @@ private fun FoldersBody(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun FolderBreadcrumbs(
+    folderName: String,
+    subPath: String,
+    onBrowse: () -> Unit,
+    onFolderRoot: () -> Unit,
+    onSubPath: (String) -> Unit,
+) {
+    val parts = subPath.trim('/').split('/').filter { it.isNotEmpty() }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = false,
+            onClick = onBrowse,
+            label = { Text(stringResource(R.string.browse_root)) },
+            colors = filterColors(),
+        )
+        Text("›", color = ForgeMuted)
+        FilterChip(
+            selected = parts.isEmpty(),
+            onClick = onFolderRoot,
+            label = { Text(folderName, maxLines = 1) },
+            colors = filterColors(),
+        )
+        parts.forEachIndexed { index, part ->
+            Text("›", color = ForgeMuted)
+            val path = parts.take(index + 1).joinToString("/")
+            FilterChip(
+                selected = index == parts.lastIndex,
+                onClick = { onSubPath(path) },
+                label = { Text(part, maxLines = 1) },
+                colors = filterColors(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SubfolderRow(name: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(ForgeGraphite)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Folder, contentDescription = null, tint = ForgeAccent)
+        Spacer(Modifier.width(12.dp))
+        Text(name, color = Color.White, style = MaterialTheme.typography.titleMedium)
     }
 }
 

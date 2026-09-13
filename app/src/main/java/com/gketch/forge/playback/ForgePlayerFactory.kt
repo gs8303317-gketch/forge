@@ -50,7 +50,7 @@ object ForgePlayerFactory {
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .build(),
-                /* handleAudioFocus = */ true,
+                /* handleAudioFocus = */ ForgeAudioFocus.behavior == com.gketch.forge.data.AudioFocusBehavior.PAUSE,
             )
             .build()
             .apply {
@@ -84,6 +84,7 @@ object ForgePlayerFactory {
         ForgeAudioFx.attach(exo.audioSessionId)
         ForgeEngine.attach(exo)
         ForgeEngine.setAudioDelayMs(prefs.audioDelayMs)
+        ForgeAudioFocus.attach(exo)
         return exo
     }
 }

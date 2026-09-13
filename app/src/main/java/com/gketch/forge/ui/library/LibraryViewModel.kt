@@ -58,6 +58,9 @@ data class LibraryUiState(
     val folderItemsAll: List<ForgeMediaItem> = emptyList(),
     val folderItems: List<ForgeMediaItem> = emptyList(),
     val selectedFolder: MediaFolder? = null,
+    /** Relative-path prefix within [selectedFolder] for breadcrumb drill-in ("" = folder root). */
+    val folderSubPath: String = "",
+    val folderSubfolders: List<String> = emptyList(),
     val playlists: List<ForgePlaylist> = emptyList(),
     val selectedPlaylist: ForgePlaylist? = null,
     val savedStreams: List<SavedStream> = emptyList(),
@@ -494,11 +497,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _state.value.items.filter { it.bucketId == folder.bucketId }
             }.filter { it.bucketId !in hidden }
                 .sortedBy { it.title.lowercase() }
+            val base = folderBreadcrumbBase(folder, all)
+            val level = itemsAtLevel(all, base, "")
+            val display = if (level.isNotEmpty() || subfoldersAt(all, base, "").isNotEmpty()) level else all
             _state.update {
                 it.copy(
                     selectedFolder = folder,
                     folderItemsAll = all,
-                    folderItems = filterFolderItems(all, it.query),
+                    folderSubPath = "",
+                    folderSubfolders = subfoldersAt(all, base, ""),
+                    folderItems = filterFolderItems(display, it.query),
                     tab = LibraryTab.BROWSE,
                 )
             }
@@ -511,8 +519,75 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 selectedFolder = null,
                 folderItemsAll = emptyList(),
                 folderItems = emptyList(),
+                folderSubPath = "",
+                folderSubfolders = emptyList(),
                 query = if (it.tab == LibraryTab.BROWSE) "" else it.query,
             )
+        }
+    }
+
+    fun setFolderSubPath(subPath: String) {
+        val st = _state.value
+        val folder = st.selectedFolder ?: return
+        val base = folderBreadcrumbBase(folder, st.folderItemsAll)
+        val clean = subPath.trim('/').let { if (it.isEmpty()) "" else "$it/" }
+        val levelItems = itemsAtLevel(st.folderItemsAll, base, clean)
+        val subs = subfoldersAt(st.folderItemsAll, base, clean)
+        val display = if (levelItems.isNotEmpty() || subs.isNotEmpty()) levelItems else {
+            // Fallback: show all under prefix
+            val current = base + pathSegments(clean)
+            st.folderItemsAll.filter { pathSegments(it.relativePath).take(current.size) == current }
+        }
+        _state.update {
+            it.copy(
+                folderSubPath = clean,
+                folderSubfolders = subs,
+                folderItems = filterFolderItems(display, it.query),
+            )
+        }
+    }
+
+    fun openFolderSubfolder(name: String) {
+        val prefix = _state.value.folderSubPath.trim('/')
+        val next = listOf(prefix, name).filter { it.isNotEmpty() }.joinToString("/")
+        setFolderSubPath(next)
+    }
+
+    private fun pathSegments(relativePath: String): List<String> =
+        relativePath.trim('/').split('/').filter { it.isNotBlank() }
+
+    private fun folderBreadcrumbBase(folder: MediaFolder, items: List<ForgeMediaItem>): List<String> {
+        val paths = items.map { pathSegments(it.relativePath) }.filter { it.isNotEmpty() }
+        if (paths.isEmpty()) return listOf(folder.name)
+        val sample = paths.minByOrNull { it.size } ?: return listOf(folder.name)
+        val idx = sample.indexOfLast { it.equals(folder.name, ignoreCase = true) }
+        return if (idx >= 0) sample.take(idx + 1) else listOf(folder.name)
+    }
+
+    private fun subfoldersAt(
+        items: List<ForgeMediaItem>,
+        baseSegments: List<String>,
+        subPath: String,
+    ): List<String> {
+        val current = baseSegments + pathSegments(subPath)
+        val names = linkedSetOf<String>()
+        for (item in items) {
+            val segs = pathSegments(item.relativePath)
+            if (segs.size > current.size && segs.take(current.size) == current) {
+                names += segs[current.size]
+            }
+        }
+        return names.sortedBy { it.lowercase() }
+    }
+
+    private fun itemsAtLevel(
+        items: List<ForgeMediaItem>,
+        baseSegments: List<String>,
+        subPath: String,
+    ): List<ForgeMediaItem> {
+        val current = baseSegments + pathSegments(subPath)
+        return items.filter { item ->
+            pathSegments(item.relativePath) == current
         }
     }
 

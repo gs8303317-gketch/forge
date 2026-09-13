@@ -26,6 +26,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Player 1.21.0: brightness 0–200% (dim overlay + ColorMatrix boost, video-only); pinch-to-zoom + pan (double-tap / Transform reset); night/blue-light filter; series auto-next (SxxExx / Episode) from Settings
 - Player 1.22.0: right-edge volume continues into loudness boost (>100% HUD); skip-intro setting + bottom-tools button; series end card (Play next / Stop); library pull-to-refresh / rescan; share frame snapshot via Android share sheet
 - Player 1.23.0: auto sidecar `.srt`/`.vtt` beside local video; remember audio + subtitle tracks per URI; pause on headset/BT unplug (Settings toggle, default on); Recently added home/video row
+- Player 1.25.0: swipe-down to close player (Settings, default on); optional double-tap center lock; Browse/folder breadcrumbs; shuffle-all on Video/Audio; settings search; audio focus Pause vs Duck
 - Player 1.24.0: tap time for remaining (−mm:ss) vs elapsed; remember speed + aspect per URI; hold-to-speed 1.5×–3×; disable/invert brightness·volume·seek gestures; stronger subtitle outline/shadow
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
@@ -124,4 +125,4 @@ Release signing (CI) uses env vars:
 
 - **applicationId:** `com.gketch.forge`
 - **minSdk:** 26 · **targetSdk / compileSdk:** 35
-- **version:** 1.24.0 (27)
+- **version:** 1.25.0 (28)

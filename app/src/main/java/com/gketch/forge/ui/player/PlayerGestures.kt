@@ -51,7 +51,7 @@ import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
-private enum class GestureKind { Seek, Volume, Brightness }
+private enum class GestureKind { Seek, Volume, Brightness, Dismiss }
 
 private const val EDGE_FRACTION = 0.20f
 private const val DOUBLE_TAP_THIRD = 1f / 3f
@@ -89,6 +89,10 @@ fun PlayerGestureLayer(
     /** Swap left/right: brightness ↔ volume. */
     invertGestureSides: Boolean = false,
     holdSpeedLabel: String = "2×",
+    swipeDownToClose: Boolean = true,
+    onSwipeDownClose: (() -> Unit)? = null,
+    doubleTapToLock: Boolean = false,
+    onDoubleTapLock: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val durationState = rememberUpdatedState(durationMs)
@@ -129,6 +133,10 @@ fun PlayerGestureLayer(
     val swipeState = rememberUpdatedState(swipeGesturesEnabled)
     val invertState = rememberUpdatedState(invertGestureSides)
     val holdLabelState = rememberUpdatedState(holdSpeedLabel)
+    val swipeDownState = rememberUpdatedState(swipeDownToClose)
+    val swipeDownCb = rememberUpdatedState(onSwipeDownClose)
+    val doubleTapLockState = rememberUpdatedState(doubleTapToLock)
+    val doubleTapLockCb = rememberUpdatedState(onDoubleTapLock)
 
     fun inChrome(y: Float, height: Float): Boolean {
         val top = topExclude.value
@@ -159,7 +167,13 @@ fun PlayerGestureLayer(
                                 doubleTapFlash = false
                                 doubleTapState.value(false)
                             }
-                            else -> tapState.value()
+                            else -> {
+                                if (doubleTapLockState.value && doubleTapLockCb.value != null) {
+                                    doubleTapLockCb.value?.invoke()
+                                } else {
+                                    tapState.value()
+                                }
+                            }
                         }
                     },
                     onTap = { offset ->
@@ -253,6 +267,7 @@ fun PlayerGestureLayer(
                 sensitivityMultiplier,
                 swipeGesturesEnabled,
                 invertGestureSides,
+                swipeDownToClose,
             ) {
                 if (!gesturesEnabled || !swipeState.value) return@pointerInput
                 awaitEachGesture {
@@ -286,6 +301,8 @@ fun PlayerGestureLayer(
                                 }
                                 start.x <= leftEdge -> if (invert) GestureKind.Volume else GestureKind.Brightness
                                 start.x >= rightEdge -> if (invert) GestureKind.Brightness else GestureKind.Volume
+                                // Center vertical: swipe-down closes (never steals edge brightness/volume).
+                                swipeDownState.value && swipeDownCb.value != null && total.y > slop -> GestureKind.Dismiss
                                 else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
@@ -323,6 +340,7 @@ fun PlayerGestureLayer(
                                 barFraction = next
                                 britCb.value(next)
                             }
+                            GestureKind.Dismiss -> Unit
                             null -> Unit
                         }
                     }
@@ -330,12 +348,19 @@ fun PlayerGestureLayer(
                     if (classified == GestureKind.Seek) {
                         seekState.value(previewMs)
                     }
+                    if (classified == GestureKind.Dismiss) {
+                        val threshold = size.height * 0.18f
+                        if (total.y >= threshold) {
+                            runCatching { swipeDownCb.value?.invoke() }
+                        }
+                    }
                     kind = null
                 }
             },
     ) {
         when (kind) {
             GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs)
+            GestureKind.Dismiss -> DismissHud()
             GestureKind.Volume -> SideHud(
                 icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
                 displayPercent = (barFraction * 100).toInt().coerceIn(0, 200),
@@ -357,6 +382,17 @@ fun PlayerGestureLayer(
         }
         if (holdSpeedActive) {
             HoldSpeedHud(label = holdLabelState.value)
+        }
+    }
+}
+
+@Composable
+private fun DismissHud() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        RowHud {
+            Text("↓", style = MaterialTheme.typography.titleLarge, color = ForgeAccent)
+            Spacer(Modifier.height(4.dp))
+            Text("Close", style = MaterialTheme.typography.labelLarge, color = Color.White)
         }
     }
 }

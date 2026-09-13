@@ -1112,6 +1112,15 @@ fun PlayerScreen(
         }
     }
 
+    val leavePlayer: () -> Unit = {
+        val player = controller
+        val uri = current?.uri?.toString()
+        if (player != null && uri != null) {
+            scope.launch { resumeStore.savePosition(uri, player.currentPosition, player.duration) }
+        }
+        onBack()
+    }
+
     BackHandler {
         if (controlsLocked) {
             controlsLocked = false
@@ -1119,12 +1128,7 @@ fun PlayerScreen(
             controlsHideToken++
             return@BackHandler
         }
-        val player = controller
-        val uri = current?.uri?.toString()
-        if (player != null && uri != null) {
-            scope.launch { resumeStore.savePosition(uri, player.currentPosition, player.duration) }
-        }
-        onBack()
+        leavePlayer()
     }
 
     val showChrome = controlsVisible && !inPip && !controlsLocked
@@ -1348,6 +1352,16 @@ fun PlayerScreen(
                         swipeGesturesEnabled = appSettings.playerGesturesEnabled,
                         invertGestureSides = appSettings.invertGestureSides,
                         holdSpeedLabel = appSettings.holdToSpeed.label,
+                        swipeDownToClose = appSettings.swipeDownToClose,
+                        onSwipeDownClose = {
+                            runCatching { leavePlayer() }
+                        },
+                        doubleTapToLock = appSettings.doubleTapToLock,
+                        onDoubleTapLock = {
+                            controlsLocked = true
+                            controlsVisible = true
+                            controlsHideToken++
+                        },
                     )
                 }
 

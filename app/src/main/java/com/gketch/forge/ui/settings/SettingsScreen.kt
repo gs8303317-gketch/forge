@@ -52,6 +52,7 @@ import com.gketch.forge.BuildConfig
 import com.gketch.forge.R
 import com.gketch.forge.data.AccentPreset
 import com.gketch.forge.data.AppSettings
+import com.gketch.forge.data.AudioFocusBehavior
 import com.gketch.forge.data.AppLanguage
 import com.gketch.forge.data.GestureSensitivity
 import com.gketch.forge.data.MinClipLength
@@ -113,6 +114,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var pinConfirm by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
     var cacheMessage by remember { mutableStateOf<String?>(null) }
+    var settingsQuery by remember { mutableStateOf("") }
     var storageHint by remember { mutableStateOf(LibraryStorageHint(0, 0, 0)) }
     val mediaRepo = remember { MediaRepository(context) }
 
@@ -201,12 +203,35 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
         }
         Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = settingsQuery,
+            onValueChange = { settingsQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text(stringResource(R.string.settings_search_hint)) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ForgeAccent,
+                unfocusedBorderColor = ForgeMuted.copy(alpha = 0.4f),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = ForgeAccent,
+                focusedContainerColor = ForgeGraphite,
+                unfocusedContainerColor = ForgeGraphite,
+            ),
+        )
+        Spacer(Modifier.height(12.dp))
+        val q = settingsQuery.trim().lowercase()
+        fun matches(vararg keys: String): Boolean {
+            if (q.isEmpty()) return true
+            return keys.any { it.lowercase().contains(q) }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            if (matches("playback", "seek", "autoplay", "series", "headset", "intro", "resume", "speed", "gesture", "hold", "chrome", "clip", "swipe", "lock", "audio focus", "duck", "pause")) {
             SettingsCard(title = "Playback") {
                 Text("Double-tap seek", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -367,6 +392,42 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onChecked = { scope.launch { appStore.setInvertGestureSides(it) } },
                 )
                 Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.swipe_down_close),
+                    subtitle = stringResource(R.string.swipe_down_close_sub),
+                    checked = app.swipeDownToClose,
+                    onChecked = { scope.launch { appStore.setSwipeDownToClose(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.double_tap_lock),
+                    subtitle = stringResource(R.string.double_tap_lock_sub),
+                    checked = app.doubleTapToLock,
+                    onChecked = { scope.launch { appStore.setDoubleTapToLock(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.audio_focus), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AudioFocusBehavior.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.audioFocusBehavior == opt,
+                            onClick = { scope.launch { appStore.setAudioFocusBehavior(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.audio_focus_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.chrome_hide_delay), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -412,6 +473,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            }
+            if (matches("stream", "user-agent", "timeout", "network")) {
             SettingsCard(title = stringResource(R.string.stream_options)) {
                 Text(stringResource(R.string.stream_user_agent), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -459,6 +522,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            }
+            if (matches("language", "hindi", "english", "भाषा", "हिन्दी")) {
             SettingsCard(title = stringResource(R.string.language)) {
                 Text(stringResource(R.string.language_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
@@ -477,6 +542,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("engine", "decoder", "buffer", "seek", "silence")) {
             SettingsCard(title = "Playback engine") {
                 Text("Decoder", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -548,6 +615,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            }
+            if (matches("appearance", "accent", "theme", "dynamic", "color")) {
             SettingsCard(title = "Appearance") {
                 Text("Accent", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -582,6 +651,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text("Dark theme is always on. Accents tint controls and chips.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
             }
 
+            }
+            if (matches("sleep", "fade", "timer")) {
             SettingsCard(title = "Sleep timer") {
                 EngineSwitchRow(
                     title = "Fade out",
@@ -622,6 +693,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("hidden", "folder")) {
             SettingsCard(title = "Hidden folders") {
                 Text("Blacklisted folders stay out of the library. Long-press a folder to hide it.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
@@ -642,6 +715,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("storage", "saf", "folder")) {
             SettingsCard(title = "Storage folders") {
                 Text("Add a folder via the system picker. Forge scans and plays those files even if MediaStore misses them.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
@@ -668,6 +743,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("backup", "restore", "export", "import")) {
             SettingsCard(title = "Backup & restore") {
                 Text("Export settings, playlists, favorites, streams, and bookmarks as JSON. Share or save the file, then import on another device.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
@@ -691,6 +768,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
 
+            }
+            if (matches("audio", "gapless", "crossfade", "loudness", "normalize")) {
             SettingsCard(title = stringResource(R.string.audio)) {
                 EngineSwitchRow(
                     title = stringResource(R.string.gapless_playback),
@@ -735,6 +814,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             }
 
+            }
+            if (matches("pin", "lock", "biometric")) {
             SettingsCard(title = stringResource(R.string.pin_lock)) {
                 Text(stringResource(R.string.pin_lock_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
@@ -764,6 +845,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("cache", "storage", "library", "thumb")) {
             SettingsCard(title = stringResource(R.string.cache_storage)) {
                 val vids = storageHint.videoCount
                 val auds = storageHint.audioCount
@@ -797,6 +880,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("history", "recent", "resume", "clear")) {
             SettingsCard(title = "History") {
                 Text(
                     "Clear recently played items. Optionally also wipe saved resume positions.",
@@ -809,6 +894,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             }
 
+            }
+            if (matches("about", "version", "forge")) {
             SettingsCard(title = "About") {
                 Text(
                     text = "Forge",
@@ -834,7 +921,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.24.0 · remaining time · per-URI speed/aspect · hold speed · gesture controls · subtitle outline",
+                    text = "1.25.0 · swipe-down close · double-tap lock · breadcrumbs · shuffle all · settings search · audio focus",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
@@ -844,6 +931,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
+            }
             }
         }
     }

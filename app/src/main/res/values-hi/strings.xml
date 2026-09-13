@@ -161,4 +161,16 @@
     <string name="invert_gesture_sides_sub">बाएँ और दाएँ किनारे नियंत्रण बदलें</string>
     <string name="show_remaining_time">शेष समय दिखाएँ</string>
     <string name="subtitle_outline">उपशीर्षक आउटलाइन</string>
+
+    <string name="swipe_down_close">नीचे स्वाइप करके बंद करें</string>
+    <string name="swipe_down_close_sub">प्लेयर के केंद्र में नीचे स्वाइप करें — लाइब्रेरी पर वापस (किनारे की चमक/वॉल्यूम पर असर नहीं)</string>
+    <string name="double_tap_lock">केंद्र पर डबल-टैप से लॉक</string>
+    <string name="double_tap_lock_sub">वैकल्पिक: प्लेयर केंद्र पर डबल-टैप से नियंत्रण लॉक (⋮ लॉक भी उपलब्ध)</string>
+    <string name="audio_focus">ऑडियो फ़ोकस</string>
+    <string name="audio_focus_sub">जब Forge चले: अन्य ऐप्स रोकें, या उनकी आवाज़ कम (duck) करें</string>
+    <string name="audio_focus_pause">अन्य रोकें</string>
+    <string name="audio_focus_duck">अन्य duck</string>
+    <string name="settings_search_hint">सेटिंग्स खोजें…</string>
+    <string name="shuffle_all">सभी शफ़ल</string>
+    <string name="browse_root">ब्राउज़</string>
 </resources>

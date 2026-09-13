@@ -63,6 +63,7 @@ class PlaybackService : MediaSessionService() {
                 val app = AppSettingsStore(this@PlaybackService).settings.first()
                 ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
                 ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
+                ForgeAudioFocus.behavior = app.audioFocusBehavior
             }
         }
 
@@ -77,6 +78,11 @@ class PlaybackService : MediaSessionService() {
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     PlaybackWidgetUpdater.publishFromPlayer(this@PlaybackService, exo)
+                    ForgeAudioFocus.onPlayWhenReady(this@PlaybackService, exo, exo.playWhenReady && isPlaying)
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    ForgeAudioFocus.onPlayWhenReady(this@PlaybackService, exo, playWhenReady)
                 }
 
                 override fun onMediaItemTransition(
@@ -111,6 +117,8 @@ class PlaybackService : MediaSessionService() {
             AppSettingsStore(this@PlaybackService).settings.collect { app ->
                 ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
                 ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
+                ForgeAudioFocus.behavior = app.audioFocusBehavior
+                ForgeAudioFocus.apply(exo, this@PlaybackService)
             }
         }
         registerNoisyReceiver()
@@ -182,6 +190,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        ForgeAudioFocus.release(this)
         unregisterNoisyReceiver()
         scope.cancel()
         ForgeLoudness.release()

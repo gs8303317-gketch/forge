@@ -109,6 +109,12 @@ enum class SubtitleOutline(val label: String) {
     SHADOW("Shadow"),
 }
 
+
+enum class AudioFocusBehavior(val label: String) {
+    PAUSE("Pause others"),
+    DUCK("Duck others"),
+}
+
 enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
     SEC_3("3s", 3_000L),
     SEC_5_5("5.5s", 5_500L),
@@ -150,6 +156,9 @@ data class AppSettings(
     val playerGesturesEnabled: Boolean = true,
     val invertGestureSides: Boolean = false,
     val subtitleOutline: SubtitleOutline = SubtitleOutline.OUTLINE,
+    val swipeDownToClose: Boolean = true,
+    val doubleTapToLock: Boolean = false,
+    val audioFocusBehavior: AudioFocusBehavior = AudioFocusBehavior.PAUSE,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -184,6 +193,9 @@ data class AppSettings(
         .put("playerGesturesEnabled", playerGesturesEnabled)
         .put("invertGestureSides", invertGestureSides)
         .put("subtitleOutline", subtitleOutline.name)
+        .put("swipeDownToClose", swipeDownToClose)
+        .put("doubleTapToLock", doubleTapToLock)
+        .put("audioFocusBehavior", audioFocusBehavior.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -274,6 +286,11 @@ class AppSettingsStore(context: Context) {
             subtitleOutline = runCatching {
                 SubtitleOutline.valueOf(p[KEY_SUB_OUTLINE] ?: SubtitleOutline.OUTLINE.name)
             }.getOrDefault(SubtitleOutline.OUTLINE),
+            swipeDownToClose = p[KEY_SWIPE_DOWN_CLOSE] ?: true,
+            doubleTapToLock = p[KEY_DOUBLE_TAP_LOCK] ?: false,
+            audioFocusBehavior = runCatching {
+                AudioFocusBehavior.valueOf(p[KEY_AUDIO_FOCUS] ?: AudioFocusBehavior.PAUSE.name)
+            }.getOrDefault(AudioFocusBehavior.PAUSE),
         )
     }
 
@@ -418,6 +435,18 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_SUB_OUTLINE] = value.name }
     }
 
+    suspend fun setSwipeDownToClose(value: Boolean) {
+        store.edit { it[KEY_SWIPE_DOWN_CLOSE] = value }
+    }
+
+    suspend fun setDoubleTapToLock(value: Boolean) {
+        store.edit { it[KEY_DOUBLE_TAP_LOCK] = value }
+    }
+
+    suspend fun setAudioFocusBehavior(value: AudioFocusBehavior) {
+        store.edit { it[KEY_AUDIO_FOCUS] = value.name }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -460,6 +489,9 @@ class AppSettingsStore(context: Context) {
             if (o.has("playerGesturesEnabled")) p[KEY_PLAYER_GESTURES] = o.optBoolean("playerGesturesEnabled", true)
             if (o.has("invertGestureSides")) p[KEY_INVERT_GESTURE] = o.optBoolean("invertGestureSides", false)
             if (o.has("subtitleOutline")) p[KEY_SUB_OUTLINE] = o.optString("subtitleOutline", SubtitleOutline.OUTLINE.name)
+            if (o.has("swipeDownToClose")) p[KEY_SWIPE_DOWN_CLOSE] = o.optBoolean("swipeDownToClose", true)
+            if (o.has("doubleTapToLock")) p[KEY_DOUBLE_TAP_LOCK] = o.optBoolean("doubleTapToLock", false)
+            if (o.has("audioFocusBehavior")) p[KEY_AUDIO_FOCUS] = o.optString("audioFocusBehavior", AudioFocusBehavior.PAUSE.name)
         }
     }
 
@@ -497,6 +529,9 @@ class AppSettingsStore(context: Context) {
         private val KEY_PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
         private val KEY_INVERT_GESTURE = booleanPreferencesKey("invert_gesture_sides")
         private val KEY_SUB_OUTLINE = stringPreferencesKey("subtitle_outline")
+        private val KEY_SWIPE_DOWN_CLOSE = booleanPreferencesKey("swipe_down_to_close")
+        private val KEY_DOUBLE_TAP_LOCK = booleanPreferencesKey("double_tap_to_lock")
+        private val KEY_AUDIO_FOCUS = stringPreferencesKey("audio_focus_behavior")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

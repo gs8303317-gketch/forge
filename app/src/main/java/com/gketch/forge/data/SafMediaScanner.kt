@@ -30,7 +30,7 @@ class SafMediaScanner(private val context: Context) {
             return@withContext emptyList()
         }
         val bucketId = folder.uri.hashCode().toLong()
-        walk(children, tree, folder.name, bucketId, depth = 0)
+        walk(children, tree, folder.name, bucketId, pathPrefix = "saf/${folder.name}/", depth = 0)
     }
 
     private fun walk(
@@ -38,6 +38,7 @@ class SafMediaScanner(private val context: Context) {
         tree: Uri,
         bucketName: String,
         bucketId: Long,
+        pathPrefix: String,
         depth: Int,
     ): List<ForgeMediaItem> {
         if (depth > 8) return emptyList()
@@ -75,7 +76,14 @@ class SafMediaScanner(private val context: Context) {
                         null
                     }
                     if (child != null) {
-                        items += walk(child, tree, bucketName, bucketId, depth + 1)
+                        items += walk(
+                            child,
+                            tree,
+                            bucketName,
+                            bucketId,
+                            pathPrefix = "$pathPrefix$name/",
+                            depth = depth + 1,
+                        )
                     }
                     continue
                 }
@@ -97,7 +105,7 @@ class SafMediaScanner(private val context: Context) {
                     albumArtUri = if (kind == MediaKind.VIDEO) uri else null,
                     bucketId = bucketId,
                     bucketName = bucketName,
-                    relativePath = "saf/$bucketName/",
+                    relativePath = pathPrefix,
                 )
             }
         }

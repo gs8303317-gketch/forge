@@ -163,25 +163,76 @@ fun AudioGroupsList(
 @Composable
 fun AudioGroupTracksHeader(
     group: AudioBrowseGroup,
+    mode: AudioBrowseMode,
     onBack: () -> Unit,
     onPlayAll: () -> Unit,
+    onShuffleAll: (() -> Unit)? = null,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(ForgeGraphite)
             .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = Color.White)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            FilterChip(
+                selected = false,
+                onClick = onBack,
+                label = {
+                    Text(
+                        when (mode) {
+                            AudioBrowseMode.SONGS -> stringResource(R.string.audio_songs)
+                            AudioBrowseMode.ALBUMS -> stringResource(R.string.audio_albums)
+                            AudioBrowseMode.ARTISTS -> stringResource(R.string.audio_artists)
+                            AudioBrowseMode.GENRES -> stringResource(R.string.audio_genres)
+                        },
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = ForgeSurfaceVariant,
+                    selectedLabelColor = ForgeAccent,
+                    containerColor = ForgeGraphite,
+                    labelColor = ForgeMuted,
+                ),
+            )
+            Text("›", color = ForgeMuted)
+            Text(
+                group.title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(group.title, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(group.subtitle, color = ForgeMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        androidx.compose.material3.TextButton(onClick = onPlayAll) {
-            Text(stringResource(R.string.action_play), color = ForgeAccent)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = Color.White)
+            }
+            Text(
+                group.subtitle,
+                color = ForgeMuted,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (onShuffleAll != null) {
+                androidx.compose.material3.TextButton(onClick = onShuffleAll) {
+                    Text(stringResource(R.string.shuffle_all), color = ForgeAccent)
+                }
+            }
+            androidx.compose.material3.TextButton(onClick = onPlayAll) {
+                Text(stringResource(R.string.action_play), color = ForgeAccent)
+            }
         }
     }
 }

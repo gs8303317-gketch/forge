@@ -164,4 +164,16 @@
     <string name="invert_gesture_sides_sub">Swap left and right edge controls</string>
     <string name="show_remaining_time">Show remaining time</string>
     <string name="subtitle_outline">Subtitle outline</string>
+
+    <string name="swipe_down_close">Swipe down to close</string>
+    <string name="swipe_down_close_sub">Swipe down on the player center to return to the library (does not affect edge brightness/volume)</string>
+    <string name="double_tap_lock">Double-tap center to lock</string>
+    <string name="double_tap_lock_sub">Optional: double-tap the center of the player to lock controls (⋮ lock still available)</string>
+    <string name="audio_focus">Audio focus</string>
+    <string name="audio_focus_sub">When Forge plays: pause other apps, or ask them to duck volume</string>
+    <string name="audio_focus_pause">Pause others</string>
+    <string name="audio_focus_duck">Duck others</string>
+    <string name="settings_search_hint">Search settings…</string>
+    <string name="shuffle_all">Shuffle all</string>
+    <string name="browse_root">Browse</string>
 </resources>

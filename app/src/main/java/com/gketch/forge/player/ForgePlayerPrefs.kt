@@ -18,10 +18,9 @@ enum class DecoderPreference(val label: String) {
 }
 
 enum class BufferPreset(val label: String, val minMs: Int, val maxMs: Int, val playbackMs: Int, val rebufferMs: Int) {
-    // Quick first frame (low playbackMs); keep min/max + rebuffer safe for 720p/x265.
-    STANDARD("Standard", 20_000, 60_000, 750, 5_000),
-    LARGE("Large (network)", 35_000, 130_000, 1_000, 8_000),
-    EXTRA("Extra", 50_000, 180_000, 1_500, 10_000),
+    STANDARD("Standard", 20_000, 60_000, 500, 4_000),
+    LARGE("Large (network)", 35_000, 130_000, 600, 5_000),
+    EXTRA("Extra", 50_000, 180_000, 1_000, 8_000),
 }
 
 data class EnginePrefs(

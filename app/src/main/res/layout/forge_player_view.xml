@@ -6,4 +6,8 @@
     android:layout_height="match_parent"
     android:background="@android:color/black"
     app:surface_type="texture_view"
-    app:use_controller="false" />
+    app:use_controller="false"
+    app:hide_on_touch="false"
+    app:show_buffering="never"
+    app:keep_content_on_player_reset="true"
+    app:shutter_background_color="@android:color/black" />

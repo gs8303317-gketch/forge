@@ -7,9 +7,10 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
-import com.gketch.forge.player.ForgeEngine
 
 class PlayerProgressState {
+    private var bufferingSinceElapsed = 0L
+
     var positionMs by mutableLongStateOf(0L)
         private set
     var durationMs by mutableLongStateOf(0L)
@@ -44,7 +45,15 @@ class PlayerProgressState {
         positionMs = position
         durationMs = duration
         bufferedMs = buffered
-        buffering = isBuffering && !ForgeEngine.isScrubbing
+        val stuck = isBuffering && !com.gketch.forge.player.ForgeEngine.isScrubbing
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (stuck) {
+            if (bufferingSinceElapsed == 0L) bufferingSinceElapsed = now
+            buffering = now - bufferingSinceElapsed >= 400L
+        } else {
+            bufferingSinceElapsed = 0L
+            buffering = false
+        }
         playbackState = state
     }
 

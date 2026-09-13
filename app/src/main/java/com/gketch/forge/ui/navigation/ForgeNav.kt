@@ -98,10 +98,13 @@ fun ForgeNav(
     }
 
     fun openQueue(items: List<ForgeMediaItem>, index: Int) {
-        session = PlaybackSession(items, index)
+        if (items.isEmpty()) return
+        val safeIndex = index.coerceIn(0, items.lastIndex)
+        session = PlaybackSession(items, safeIndex)
         navController.navigate(Routes.PLAYER) {
             launchSingleTop = true
-            restoreState = true
+            // A new session must not restore a previous empty/error Player composition.
+            restoreState = false
         }
     }
 
@@ -186,7 +189,8 @@ fun ForgeNav(
                 onOpenHistory = { navController.navigate(Routes.HISTORY) { launchSingleTop = true } },
                 onRequestPermission = { navController.navigate(Routes.PERMISSION) },
                 onExpandPlayer = {
-                    if (session != null) {
+                    val live = session
+                    if (live != null && live.queue.isNotEmpty()) {
                         navController.navigate(Routes.PLAYER) {
                             launchSingleTop = true
                             restoreState = true

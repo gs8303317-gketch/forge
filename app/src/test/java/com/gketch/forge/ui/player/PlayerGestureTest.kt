@@ -81,7 +81,6 @@ class PlayerGestureTest {
 
     @Test
     fun dismissNeedsClearVerticalDominance() {
-        // 2.0x vertical is not enough (ratio is 2.75)
         assertNull(classify(30f, 62f, startX = w * 0.5f, startY = h * 0.2f))
     }
 
@@ -97,5 +96,18 @@ class PlayerGestureTest {
         assertEquals(true, doubleTapSeekBack(w * 0.10f, w))
         assertEquals(false, doubleTapSeekBack(w * 0.90f, w))
         assertNull(doubleTapSeekBack(w * 0.50f, w))
+    }
+
+    @Test
+    fun zeroSizeSurfaceDoesNotClassify() {
+        assertNull(
+            classifySwipeGesture(
+                dx = 80f, dy = 10f, startX = 10f, startY = 10f,
+                width = 0f, height = 0f, slop = slop,
+                invertSides = false, swipeDownEnabled = true,
+            ),
+        )
+        assertNull(doubleTapSeekBack(10f, 0f))
+        assertFalse(dismissShouldClose(100f, 0f, 0f))
     }
 }

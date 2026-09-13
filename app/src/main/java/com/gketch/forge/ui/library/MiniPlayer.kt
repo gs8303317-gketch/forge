@@ -58,14 +58,17 @@ fun MiniPlayerBar(
     var progress by remember { mutableFloatStateOf(0f) }
     var artUri by remember { mutableStateOf<Uri?>(null) }
     var isVideo by remember { mutableStateOf(true) }
+    var hasNext by remember { mutableStateOf(false) }
 
     fun sync() {
         val p = controller
         if (p == null || p.mediaItemCount == 0 || p.currentMediaItem == null) {
             visible = false
+            hasNext = false
             return
         }
         visible = true
+        hasNext = runCatching { p.hasNextMediaItem() }.getOrDefault(false)
         title = p.mediaMetadata.title?.toString()
             ?: p.currentMediaItem?.mediaMetadata?.title?.toString()
             ?: "Now playing"
@@ -155,14 +158,17 @@ fun MiniPlayerBar(
             IconButton(
                 onClick = {
                     val p = controller ?: return@IconButton
-                    if (p.hasNextMediaItem()) p.seekToNextMediaItem()
+                    runCatching {
+                        if (p.hasNextMediaItem()) p.seekToNextMediaItem()
+                    }
                 },
+                enabled = hasNext,
                 modifier = Modifier.size(44.dp),
             ) {
                 Icon(
                     Icons.Rounded.SkipNext,
                     contentDescription = "Next",
-                    tint = Color.White.copy(alpha = 0.92f),
+                    tint = Color.White.copy(alpha = if (hasNext) 0.92f else 0.32f),
                 )
             }
             IconButton(

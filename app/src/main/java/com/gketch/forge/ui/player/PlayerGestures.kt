@@ -54,7 +54,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 private enum class GestureKind { Seek, Volume, Brightness, Dismiss }
 
 private const val EDGE_FRACTION = 0.20f
-private const val DOUBLE_TAP_THIRD = 1f / 3f
+/** Left/right double-tap seek zones (center reserved for lock / chrome toggle). */
+private const val DOUBLE_TAP_ZONE = 0.35f
+/** Swipe-down must clearly dominate horizontal so it never steals VLC-style seek. */
+private const val DISMISS_VERTICAL_RATIO = 2.0f
 /** Gesture brightness spans 0..2 (0%..200%); full-height swipe covers the range. */
 private const val BRIGHTNESS_SPAN = BrightnessStore.MAX
 /** Gesture volume spans 0..2 (0%..200%); above 1.0 continues into loudness boost. */
@@ -157,13 +160,13 @@ fun PlayerGestureLayer(
                             zoomResetCb.value?.invoke()
                             return@detectTapGestures
                         }
-                        val third = size.width * DOUBLE_TAP_THIRD
+                        val zone = size.width * DOUBLE_TAP_ZONE
                         when {
-                            offset.x < third -> {
+                            offset.x < zone -> {
                                 doubleTapFlash = true
                                 doubleTapState.value(true)
                             }
-                            offset.x > size.width - third -> {
+                            offset.x > size.width - zone -> {
                                 doubleTapFlash = false
                                 doubleTapState.value(false)
                             }
@@ -295,16 +298,15 @@ fun PlayerGestureLayer(
                         val delta = change.positionChange()
                         total += delta
                         if (classified == null && (abs(total.x) > slop || abs(total.y) > slop)) {
+                            // VLC-like: horizontal dominate → seek anywhere; vertical on edges →
+                            // brightness/volume; center vertical → optional swipe-down close.
                             classified = when {
-                                abs(total.x) >= abs(total.y) -> {
-                                    if (start.x in leftEdge..rightEdge) GestureKind.Seek else null
-                                }
+                                abs(total.x) >= abs(total.y) -> GestureKind.Seek
                                 start.x <= leftEdge -> if (invert) GestureKind.Volume else GestureKind.Brightness
                                 start.x >= rightEdge -> if (invert) GestureKind.Brightness else GestureKind.Volume
-                                // Center vertical: swipe-down closes (never steals edge brightness/volume).
-                                // Require clear vertical dominance so slight diagonal seek doesn't dismiss.
                                 swipeDownState.value && swipeDownCb.value != null &&
-                                    total.y > slop && abs(total.y) > abs(total.x) * 1.15f -> GestureKind.Dismiss
+                                    total.y > slop &&
+                                    abs(total.y) > abs(total.x) * DISMISS_VERTICAL_RATIO -> GestureKind.Dismiss
                                 else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)

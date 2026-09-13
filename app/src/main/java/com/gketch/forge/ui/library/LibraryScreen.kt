@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -1567,11 +1568,11 @@ private fun ContinueWatchingSection(
             Text("Long-press to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 4.dp),
         ) {
-            items.take(16).forEach { cw ->
+            items(items.take(16), key = { it.item.uri.toString() }) { cw ->
                 Column(
                     modifier = Modifier
                         .width(120.dp)
@@ -1615,11 +1616,11 @@ private fun FavoritesSection(
             Text("Favorites", style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 4.dp),
         ) {
-            items.take(20).forEach { item ->
+            items(items.take(20), key = { it.uri.toString() }) { item ->
                 RecentCard(item = item, onClick = { onPlay(item) })
             }
         }
@@ -1638,11 +1639,11 @@ private fun RecentlyAddedSection(
             Text(stringResource(R.string.recently_added), style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 4.dp),
         ) {
-            items.take(20).forEach { item ->
+            items(items.take(20), key = { it.uri.toString() }) { item ->
                 RecentCard(item = item, onClick = { onPlay(item) })
             }
         }
@@ -1664,11 +1665,11 @@ private fun RecentSection(
             Text("Long-press to remove", style = MaterialTheme.typography.labelSmall, color = ForgeMuted)
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 4.dp),
         ) {
-            items.take(12).forEach { item ->
+            items(items.take(12), key = { it.uri.toString() }) { item ->
                 RecentCard(
                     item = item,
                     onClick = { onPlay(item) },
@@ -2177,11 +2178,11 @@ private fun SavedStreamsSection(
             Text("Saved streams", style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
         Spacer(Modifier.height(10.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(end = 4.dp),
         ) {
-            streams.take(12).forEach { stream ->
+            items(streams.take(12), key = { it.id }) { stream ->
                 Column(
                     modifier = Modifier
                         .width(140.dp)

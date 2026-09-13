@@ -1269,7 +1269,7 @@ fun PlayerScreen(
                 val excludeTopPx = with(density) { if (showChrome) 56.dp.toPx() else 0f }
                 val excludeBottomPx = with(density) {
                     when {
-                        showChrome -> 108.dp.toPx()
+                        showChrome -> 148.dp.toPx()
                         showLockChrome -> 72.dp.toPx()
                         else -> 48.dp.toPx()
                     }
@@ -2682,16 +2682,16 @@ private fun PlayerTopBar(
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onInteract,
             )
-            .padding(horizontal = 2.dp, vertical = 2.dp),
+            .padding(horizontal = 0.dp, vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
         }
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -3040,6 +3040,7 @@ private fun PlayerControls(
     val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val vPad = if (landscape) 2.dp else 4.dp
     val scrubTouch = if (landscape) 28.dp else 32.dp
+    val secondaryIcon = if (landscape) 18.dp else 20.dp
 
     Column(
         modifier = Modifier
@@ -3109,34 +3110,96 @@ private fun PlayerControls(
                 color = ForgeMuted,
             )
         }
+        // Primary transport — VLC-like centered prev / play / next
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = if (landscape) Arrangement.SpaceBetween else Arrangement.SpaceEvenly,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = if (landscape) 0.dp else 2.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onToggleShuffle) {
+            if (showFrameStep) {
+                IconButton(onClick = { onFrameStep(false) }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Rounded.ChevronLeft,
+                        contentDescription = "Previous frame",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            IconButton(onClick = onPrev, enabled = canPrev, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Rounded.SkipPrevious,
+                    contentDescription = "Previous",
+                    tint = if (canPrev) Color.White else ForgeMuted,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            IconButton(
+                onClick = onPlayPause,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(ForgeAccent),
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.Black,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+            IconButton(onClick = onNext, enabled = canNext, modifier = Modifier.size(48.dp)) {
+                Icon(
+                    Icons.Rounded.SkipNext,
+                    contentDescription = "Next",
+                    tint = if (canNext) Color.White else ForgeMuted,
+                    modifier = Modifier.size(32.dp),
+                )
+            }
+            if (showFrameStep) {
+                IconButton(onClick = { onFrameStep(true) }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = "Next frame",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+        }
+        // Secondary tools — compact calm row (aspect / orient / queue / etc.)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = if (landscape) 0.dp else 2.dp, bottom = if (landscape) 0.dp else 2.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onToggleShuffle, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Rounded.Shuffle,
                     contentDescription = "Shuffle",
-                    tint = if (shuffleOn) ForgeAccent else Color.White,
-                    modifier = Modifier.size(22.dp),
+                    tint = if (shuffleOn) ForgeAccent else Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(secondaryIcon),
                 )
             }
-            IconButton(onClick = onQueue) {
+            IconButton(onClick = onQueue, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Rounded.QueueMusic,
                     contentDescription = stringResource(R.string.queue),
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp),
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(secondaryIcon),
                 )
             }
-            if (showChapters && !showFrameStep) {
-                IconButton(onClick = onChapterPrev) {
+            if (showChapters) {
+                IconButton(onClick = onChapterPrev, modifier = Modifier.size(40.dp)) {
                     Icon(
                         Icons.Rounded.ChevronLeft,
                         contentDescription = stringResource(R.string.chapter_prev),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(secondaryIcon),
                     )
                 }
             }
@@ -3149,17 +3212,17 @@ private fun PlayerControls(
                             onClick = onCycleAspect,
                             onLongClick = onLongAspect,
                         )
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Icon(
                         Icons.Rounded.AspectRatio,
                         contentDescription = stringResource(R.string.aspect_cycle, aspectLabel),
-                        tint = ForgeAccent,
-                        modifier = Modifier.size(20.dp),
+                        tint = ForgeAccent.copy(alpha = 0.95f),
+                        modifier = Modifier.size(secondaryIcon),
                     )
                     Text(
                         text = aspectLabel,
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -3170,17 +3233,17 @@ private fun PlayerControls(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable(onClick = onToggleOrient)
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Icon(
                         Icons.Rounded.ScreenRotation,
                         contentDescription = stringResource(R.string.orient_toggle, orientLabel),
-                        tint = if (orientLabel == "Auto") Color.White else ForgeAccent,
-                        modifier = Modifier.size(20.dp),
+                        tint = if (orientLabel == "Auto") Color.White.copy(alpha = 0.85f) else ForgeAccent,
+                        modifier = Modifier.size(secondaryIcon),
                     )
                     Text(
                         text = orientLabel,
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
@@ -3191,90 +3254,44 @@ private fun PlayerControls(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .clickable(onClick = onSkipIntro)
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Icon(
                         Icons.Rounded.FastForward,
                         contentDescription = stringResource(R.string.skip_intro),
-                        tint = ForgeAccent,
-                        modifier = Modifier.size(20.dp),
+                        tint = ForgeAccent.copy(alpha = 0.95f),
+                        modifier = Modifier.size(secondaryIcon),
                     )
                     Text(
                         text = "${skipIntroSeconds}s",
-                        color = Color.White,
+                        color = Color.White.copy(alpha = 0.8f),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
             }
-            if (showFrameStep) {
-                IconButton(onClick = { onFrameStep(false) }) {
-                    Icon(
-                        Icons.Rounded.ChevronLeft,
-                        contentDescription = "Previous frame",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
-            }
-            IconButton(onClick = onPrev, enabled = canPrev) {
-                Icon(
-                    Icons.Rounded.SkipPrevious,
-                    contentDescription = "Previous",
-                    tint = if (canPrev) Color.White else ForgeMuted,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            IconButton(
-                onClick = onPlayPause,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(ForgeAccent),
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.Black,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
-            IconButton(onClick = onNext, enabled = canNext) {
-                Icon(
-                    Icons.Rounded.SkipNext,
-                    contentDescription = "Next",
-                    tint = if (canNext) Color.White else ForgeMuted,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            if (showFrameStep) {
-                IconButton(onClick = { onFrameStep(true) }) {
-                    Icon(
-                        Icons.Rounded.ChevronRight,
-                        contentDescription = "Next frame",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
-            }
-            if (showChapters && !showFrameStep) {
-                IconButton(onClick = onChapterNext) {
+            if (showChapters) {
+                IconButton(onClick = onChapterNext, modifier = Modifier.size(40.dp)) {
                     Icon(
                         Icons.Rounded.ChevronRight,
                         contentDescription = stringResource(R.string.chapter_next),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(secondaryIcon),
                     )
                 }
             }
-            IconButton(onClick = onCycleRepeat) {
+            IconButton(onClick = onCycleRepeat, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = when (repeatMode) {
                         Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne
                         else -> Icons.Rounded.Repeat
                     },
                     contentDescription = "Repeat",
-                    tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White else ForgeAccent,
-                    modifier = Modifier.size(22.dp),
+                    tint = if (repeatMode == Player.REPEAT_MODE_OFF) {
+                        Color.White.copy(alpha = 0.85f)
+                    } else {
+                        ForgeAccent
+                    },
+                    modifier = Modifier.size(secondaryIcon),
                 )
             }
         }
@@ -3956,11 +3973,16 @@ private fun QueueDialog(
         containerColor = ForgeGraphite,
         title = { Text("Queue · ${items.size}", color = Color.White) },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                if (items.isEmpty()) {
-                    Text("Queue is empty", color = ForgeMuted)
-                } else {
-                    items.forEachIndexed { i, item ->
+            if (items.isEmpty()) {
+                Text("Queue is empty", color = ForgeMuted)
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp),
+                ) {
+                    items(items.size) { i ->
+                        val item = items[i]
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

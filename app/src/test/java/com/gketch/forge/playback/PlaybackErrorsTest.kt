@@ -51,4 +51,20 @@ class PlaybackErrorsTest {
         ForgeBalance.resetFaultLatch()
         assertFalse(ForgeBalance.isDisabled)
     }
+
+    @Test
+    fun uiFaultDetectedFromComposeCause() {
+        assertTrue(
+            PlaybackErrors.isLikelyUiFault(
+                message = "Unexpected runtime error",
+                cause = IllegalStateException("Reading a state that was created after the snapshot was taken in androidx.compose.runtime"),
+            ),
+        )
+        assertFalse(
+            PlaybackErrors.isLikelyUiFault(
+                message = "Unexpected runtime error",
+                cause = IllegalStateException("Audio sink flush failed"),
+            ),
+        )
+    }
 }

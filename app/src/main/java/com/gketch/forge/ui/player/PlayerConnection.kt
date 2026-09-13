@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -48,4 +49,10 @@ fun Player.stopCompletely() {
     playWhenReady = false
     stop()
     clearMediaItems()
+    // Tear down notification / foreground service (custom STOP), not just clear the playlist.
+    (this as? MediaController)?.let { controller ->
+        runCatching {
+            controller.sendCustomCommand(PlaybackService.STOP_COMMAND, Bundle.EMPTY)
+        }
+    }
 }

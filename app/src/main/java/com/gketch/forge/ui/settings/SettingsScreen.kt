@@ -231,8 +231,212 @@ fun SettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (matches("playback", "seek", "autoplay", "series", "headset", "intro", "resume", "speed", "gesture", "hold", "chrome", "clip", "swipe", "lock", "audio focus", "duck", "pause")) {
-            SettingsCard(title = "Playback") {
+            // ── Interface ──────────────────────────────────────────────
+            if (matches(
+                "interface", "language", "hindi", "english", "भाषा", "हिन्दी",
+                "appearance", "accent", "theme", "dynamic", "color", "chrome", "hide",
+            )) {
+            SettingsCard(title = stringResource(R.string.settings_section_interface)) {
+                Text(stringResource(R.string.language), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(4.dp))
+                Text(stringResource(R.string.language_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppLanguage.entries.forEach { lang ->
+                        FilterChip(
+                            selected = app.appLanguage == lang,
+                            onClick = { scope.launch { appStore.setAppLanguage(lang) } },
+                            label = { Text(lang.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Accent", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AccentPreset.entries.forEach { preset ->
+                        FilterChip(
+                            selected = app.accentPreset == preset && !app.dynamicColor,
+                            onClick = {
+                                scope.launch {
+                                    appStore.setDynamicColor(false)
+                                    appStore.setAccentPreset(preset)
+                                }
+                            },
+                            label = { Text(preset.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Spacer(Modifier.height(10.dp))
+                    EngineSwitchRow(
+                        title = "Material You",
+                        subtitle = "Dynamic accent from wallpaper (Android 12+)",
+                        checked = app.dynamicColor,
+                        onChecked = { scope.launch { appStore.setDynamicColor(it) } },
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Dark theme is always on. Accents tint controls and chips.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.chrome_hide_delay), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ChromeHideDelay.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.chromeHideDelay == opt,
+                            onClick = { scope.launch { appStore.setChromeHideDelay(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.chrome_hide_delay_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            }
+
+            // ── Video ──────────────────────────────────────────────────
+            if (matches("video", "decoder", "hardware", "software", "mediacodec", "engine")) {
+            SettingsCard(title = stringResource(R.string.settings_section_video)) {
+                Text("Decoder", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DecoderPreference.entries.forEach { mode ->
+                        FilterChip(
+                            selected = prefs.decoder == mode,
+                            onClick = {
+                                scope.launch { store.setDecoder(mode) }
+                            },
+                            label = { Text(mode.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Hardware preferred by default (Software fallback). Auto / Hardware / Software via MediaCodecSelector. ExtensionRendererMode stays OFF — no FFmpeg .so in CI.",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            }
+
+            // ── Audio ──────────────────────────────────────────────────
+            if (matches(
+                "audio", "gapless", "crossfade", "loudness", "normalize",
+                "silence", "headset", "focus", "duck", "pause",
+            )) {
+            SettingsCard(title = stringResource(R.string.settings_section_audio)) {
+                EngineSwitchRow(
+                    title = stringResource(R.string.gapless_playback),
+                    subtitle = stringResource(R.string.gapless_playback_sub),
+                    checked = app.gaplessPlayback,
+                    onChecked = { scope.launch { appStore.setGaplessPlayback(it) } },
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(stringResource(R.string.crossfade), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CrossfadeDuration.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.crossfade == opt,
+                            onClick = {
+                                scope.launch {
+                                    appStore.setCrossfade(opt)
+                                    ForgeCrossfade.setDurationSec(opt.seconds)
+                                }
+                            },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(stringResource(R.string.crossfade_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(12.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.loudness_normalize),
+                    subtitle = stringResource(R.string.loudness_normalize_sub),
+                    checked = app.loudnessNormalize,
+                    onChecked = {
+                        scope.launch {
+                            appStore.setLoudnessNormalize(it)
+                            ForgeLoudness.setNormalizeEnabled(it)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                EngineSwitchRow(
+                    title = "Skip silence",
+                    subtitle = "Media3 skipSilenceEnabled (audio gaps)",
+                    checked = prefs.skipSilence,
+                    onChecked = {
+                        scope.launch {
+                            store.setSkipSilence(it)
+                            ForgeEngine.setSkipSilence(it)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.pause_on_headset),
+                    subtitle = stringResource(R.string.pause_on_headset_sub),
+                    checked = app.pauseOnHeadsetUnplug,
+                    onChecked = { scope.launch { appStore.setPauseOnHeadsetUnplug(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.audio_focus), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AudioFocusBehavior.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.audioFocusBehavior == opt,
+                            onClick = { scope.launch { appStore.setAudioFocusBehavior(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.audio_focus_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            }
+
+            // ── Playback ───────────────────────────────────────────────
+            if (matches(
+                "playback", "seek", "autoplay", "series", "intro", "resume",
+                "speed", "precise", "sleep", "fade", "timer",
+            )) {
+            SettingsCard(title = stringResource(R.string.settings_section_playback)) {
                 Text("Double-tap seek", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -263,13 +467,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onChecked = { scope.launch { appStore.setSeriesAutoNext(it) } },
                 )
                 Spacer(Modifier.height(14.dp))
-                EngineSwitchRow(
-                    title = stringResource(R.string.pause_on_headset),
-                    subtitle = stringResource(R.string.pause_on_headset_sub),
-                    checked = app.pauseOnHeadsetUnplug,
-                    onChecked = { scope.launch { appStore.setPauseOnHeadsetUnplug(it) } },
-                )
-                Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.skip_intro), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -292,7 +489,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(14.dp))
-                Text("Resume playback", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.resume_playback_title), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -334,6 +531,66 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = "Precise seeking",
+                    subtitle = "Prefer SeekParameters.EXACT where the container supports it",
+                    checked = prefs.preciseSeek,
+                    onChecked = {
+                        scope.launch {
+                            store.setPreciseSeek(it)
+                            ForgeEngine.setPreciseSeek(it)
+                        }
+                    },
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.sleep_timer), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(8.dp))
+                EngineSwitchRow(
+                    title = "Fade out",
+                    subtitle = "Lower volume in the last seconds",
+                    checked = app.sleepFadeEnabled,
+                    onChecked = { scope.launch { appStore.setSleepFadeEnabled(it) } },
+                )
+                if (app.sleepFadeEnabled) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Fade length", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AppSettingsStore.FADE_OPTIONS.forEach { sec ->
+                            FilterChip(
+                                selected = app.sleepFadeSeconds == sec,
+                                onClick = { scope.launch { appStore.setSleepFadeSeconds(sec) } },
+                                label = { Text("${sec}s") },
+                                colors = engineChipColors(),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("When timer ends", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SleepEndAction.entries.forEach { action ->
+                        FilterChip(
+                            selected = app.sleepEndAction == action,
+                            onClick = { scope.launch { appStore.setSleepEndAction(action) } },
+                            label = { Text(action.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+            }
+            }
+
+            // ── Gestures ───────────────────────────────────────────────
+            if (matches(
+                "gesture", "hold", "brightness", "volume", "swipe", "lock",
+                "sensitivity", "invert", "pinch",
+            )) {
+            SettingsCard(title = stringResource(R.string.settings_section_gestures)) {
                 Text("Gesture sensitivity", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -405,51 +662,15 @@ fun SettingsScreen(onBack: () -> Unit) {
                     checked = app.doubleTapToLock,
                     onChecked = { scope.launch { appStore.setDoubleTapToLock(it) } },
                 )
-                Spacer(Modifier.height(14.dp))
-                Text(stringResource(R.string.audio_focus), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AudioFocusBehavior.entries.forEach { opt ->
-                        FilterChip(
-                            selected = app.audioFocusBehavior == opt,
-                            onClick = { scope.launch { appStore.setAudioFocusBehavior(opt) } },
-                            label = { Text(opt.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    stringResource(R.string.audio_focus_sub),
-                    color = ForgeMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(14.dp))
-                Text(stringResource(R.string.chrome_hide_delay), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ChromeHideDelay.entries.forEach { opt ->
-                        FilterChip(
-                            selected = app.chromeHideDelay == opt,
-                            onClick = { scope.launch { appStore.setChromeHideDelay(opt) } },
-                            label = { Text(opt.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    stringResource(R.string.chrome_hide_delay_sub),
-                    color = ForgeMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(14.dp))
+            }
+            }
+
+            // ── Library ────────────────────────────────────────────────
+            if (matches(
+                "library", "clip", "hidden", "folder", "storage", "saf",
+                "cache", "thumb", "history", "recent", "clear", "exclude",
+            )) {
+            SettingsCard(title = stringResource(R.string.settings_section_library)) {
                 Text(stringResource(R.string.exclude_short_clips), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(
@@ -471,11 +692,103 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Spacer(Modifier.height(16.dp))
+                Text("Hidden folders", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(4.dp))
+                Text("Blacklisted folders stay out of the library. Long-press a folder to hide it.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                if (hidden.isEmpty()) {
+                    Text("None hidden", color = ForgeMuted)
+                } else {
+                    hidden.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(folder.name, color = Color.White, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { scope.launch { hiddenStore.unhide(folder.bucketId) } }) {
+                                Text("Unhide", color = ForgeAccent)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("Storage folders", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(4.dp))
+                Text("Add a folder via the system picker. Forge scans and plays those files even if MediaStore misses them.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = { safLauncher.launch(null) }) {
+                    Text("Add folder…", color = ForgeAccent)
+                }
+                if (safFolders.isEmpty()) {
+                    Text("No extra folders", color = ForgeMuted)
+                } else {
+                    safFolders.forEach { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(folder.name, color = Color.White)
+                                Text(folder.uri, color = ForgeMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            }
+                            TextButton(onClick = { scope.launch { safStore.remove(folder.uri) } }) {
+                                Text("Remove", color = ForgeAccent)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(R.string.cache_storage), color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(8.dp))
+                val vids = storageHint.videoCount
+                val auds = storageHint.audioCount
+                val bytes = storageHint.totalBytes
+                val sizeLabel = when {
+                    bytes >= 1_000_000_000L -> "%.1f GB".format(bytes / 1_000_000_000.0)
+                    bytes >= 1_000_000L -> "%.0f MB".format(bytes / 1_000_000.0)
+                    bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
+                    else -> "$bytes B"
+                }
+                Text(
+                    stringResource(R.string.library_counts) + ": $vids videos · $auds audio · ~$sizeLabel",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(10.dp))
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching {
+                            context.imageLoader.memoryCache?.clear()
+                            context.imageLoader.diskCache?.clear()
+                        }
+                        cacheMessage = context.getString(R.string.clear_image_cache_done)
+                    }
+                }) {
+                    Text(stringResource(R.string.clear_image_cache), color = ForgeAccent)
+                }
+                cacheMessage?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(stringResource(R.string.history), color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Clear recently played items. Optionally also wipe saved resume positions.",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(10.dp))
+                TextButton(onClick = { clearDialog = true }) {
+                    Text("Clear history…", color = ForgeAccent)
+                }
+            }
             }
 
-            }
-            if (matches("stream", "user-agent", "timeout", "network")) {
-            SettingsCard(title = stringResource(R.string.stream_options)) {
+            // ── Network ────────────────────────────────────────────────
+            if (matches("network", "stream", "user-agent", "timeout", "buffer", "hls", "dash")) {
+            SettingsCard(title = stringResource(R.string.settings_section_network)) {
                 Text(stringResource(R.string.stream_user_agent), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 var uaDraft by remember(app.streamUserAgent) { mutableStateOf(app.streamUserAgent) }
@@ -520,54 +833,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
-            }
-
-            }
-            if (matches("language", "hindi", "english", "भाषा", "हिन्दी")) {
-            SettingsCard(title = stringResource(R.string.language)) {
-                Text(stringResource(R.string.language_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AppLanguage.entries.forEach { lang ->
-                        FilterChip(
-                            selected = app.appLanguage == lang,
-                            onClick = { scope.launch { appStore.setAppLanguage(lang) } },
-                            label = { Text(lang.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-            }
-
-            }
-            if (matches("engine", "decoder", "buffer", "seek", "silence")) {
-            SettingsCard(title = "Playback engine") {
-                Text("Decoder", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    DecoderPreference.entries.forEach { mode ->
-                        FilterChip(
-                            selected = prefs.decoder == mode,
-                            onClick = {
-                                scope.launch { store.setDecoder(mode) }
-                            },
-                            label = { Text(mode.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Hardware preferred by default (Software fallback). Auto / Hardware / Software via MediaCodecSelector. ExtensionRendererMode stays OFF — no FFmpeg .so in CI.",
-                    color = ForgeMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
                 Spacer(Modifier.height(14.dp))
                 Text("Network buffers", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
@@ -590,233 +855,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Spacer(Modifier.height(14.dp))
-                EngineSwitchRow(
-                    title = "Precise seeking",
-                    subtitle = "Prefer SeekParameters.EXACT where the container supports it",
-                    checked = prefs.preciseSeek,
-                    onChecked = {
-                        scope.launch {
-                            store.setPreciseSeek(it)
-                            ForgeEngine.setPreciseSeek(it)
-                        }
-                    },
-                )
-                EngineSwitchRow(
-                    title = "Skip silence",
-                    subtitle = "Media3 skipSilenceEnabled (audio gaps)",
-                    checked = prefs.skipSilence,
-                    onChecked = {
-                        scope.launch {
-                            store.setSkipSilence(it)
-                            ForgeEngine.setSkipSilence(it)
-                        }
-                    },
-                )
+            }
             }
 
-            }
-            if (matches("appearance", "accent", "theme", "dynamic", "color")) {
-            SettingsCard(title = "Appearance") {
-                Text("Accent", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AccentPreset.entries.forEach { preset ->
-                        FilterChip(
-                            selected = app.accentPreset == preset && !app.dynamicColor,
-                            onClick = {
-                                scope.launch {
-                                    appStore.setDynamicColor(false)
-                                    appStore.setAccentPreset(preset)
-                                }
-                            },
-                            label = { Text(preset.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    Spacer(Modifier.height(10.dp))
-                    EngineSwitchRow(
-                        title = "Material You",
-                        subtitle = "Dynamic accent from wallpaper (Android 12+)",
-                        checked = app.dynamicColor,
-                        onChecked = { scope.launch { appStore.setDynamicColor(it) } },
-                    )
-                }
-                Spacer(Modifier.height(6.dp))
-                Text("Dark theme is always on. Accents tint controls and chips.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-            }
-
-            }
-            if (matches("sleep", "fade", "timer")) {
-            SettingsCard(title = "Sleep timer") {
-                EngineSwitchRow(
-                    title = "Fade out",
-                    subtitle = "Lower volume in the last seconds",
-                    checked = app.sleepFadeEnabled,
-                    onChecked = { scope.launch { appStore.setSleepFadeEnabled(it) } },
-                )
-                if (app.sleepFadeEnabled) {
-                    Spacer(Modifier.height(6.dp))
-                    Text("Fade length", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AppSettingsStore.FADE_OPTIONS.forEach { sec ->
-                            FilterChip(
-                                selected = app.sleepFadeSeconds == sec,
-                                onClick = { scope.launch { appStore.setSleepFadeSeconds(sec) } },
-                                label = { Text("${sec}s") },
-                                colors = engineChipColors(),
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("When timer ends", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SleepEndAction.entries.forEach { action ->
-                        FilterChip(
-                            selected = app.sleepEndAction == action,
-                            onClick = { scope.launch { appStore.setSleepEndAction(action) } },
-                            label = { Text(action.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
-            }
-
-            }
-            if (matches("hidden", "folder")) {
-            SettingsCard(title = "Hidden folders") {
-                Text("Blacklisted folders stay out of the library. Long-press a folder to hide it.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                if (hidden.isEmpty()) {
-                    Text("None hidden", color = ForgeMuted)
-                } else {
-                    hidden.forEach { folder ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(folder.name, color = Color.White, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { scope.launch { hiddenStore.unhide(folder.bucketId) } }) {
-                                Text("Unhide", color = ForgeAccent)
-                            }
-                        }
-                    }
-                }
-            }
-
-            }
-            if (matches("storage", "saf", "folder")) {
-            SettingsCard(title = "Storage folders") {
-                Text("Add a folder via the system picker. Forge scans and plays those files even if MediaStore misses them.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = { safLauncher.launch(null) }) {
-                    Text("Add folder…", color = ForgeAccent)
-                }
-                if (safFolders.isEmpty()) {
-                    Text("No extra folders", color = ForgeMuted)
-                } else {
-                    safFolders.forEach { folder ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(folder.name, color = Color.White)
-                                Text(folder.uri, color = ForgeMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                            }
-                            TextButton(onClick = { scope.launch { safStore.remove(folder.uri) } }) {
-                                Text("Remove", color = ForgeAccent)
-                            }
-                        }
-                    }
-                }
-            }
-
-            }
-            if (matches("backup", "restore", "export", "import")) {
-            SettingsCard(title = "Backup & restore") {
-                Text("Export settings, playlists, favorites, streams, and bookmarks as JSON. Share or save the file, then import on another device.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = {
-                        pendingExportShare = false
-                        exportLauncher.launch("forge-backup.json")
-                    }) { Text("Export", color = ForgeAccent) }
-                    TextButton(onClick = {
-                        pendingExportShare = true
-                        exportLauncher.launch("forge-backup.json")
-                    }) { Text("Share", color = ForgeAccent) }
-                    TextButton(onClick = {
-                        importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                    }) { Text("Import", color = Color.White) }
-                }
-                backupMessage?.let {
-                    Spacer(Modifier.height(6.dp))
-                    Text(it, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-
-
-            }
-            if (matches("audio", "gapless", "crossfade", "loudness", "normalize")) {
-            SettingsCard(title = stringResource(R.string.audio)) {
-                EngineSwitchRow(
-                    title = stringResource(R.string.gapless_playback),
-                    subtitle = stringResource(R.string.gapless_playback_sub),
-                    checked = app.gaplessPlayback,
-                    onChecked = { scope.launch { appStore.setGaplessPlayback(it) } },
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(stringResource(R.string.crossfade), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CrossfadeDuration.entries.forEach { opt ->
-                        FilterChip(
-                            selected = app.crossfade == opt,
-                            onClick = {
-                                scope.launch {
-                                    appStore.setCrossfade(opt)
-                                    ForgeCrossfade.setDurationSec(opt.seconds)
-                                }
-                            },
-                            label = { Text(opt.label) },
-                            colors = engineChipColors(),
-                        )
-                    }
-                }
+            // ── Privacy & Lock ─────────────────────────────────────────
+            if (matches("privacy", "pin", "lock", "biometric", "backup", "restore", "export", "import")) {
+            SettingsCard(title = stringResource(R.string.settings_section_privacy)) {
+                Text(stringResource(R.string.pin_lock), color = Color.White, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(4.dp))
-                Text(stringResource(R.string.crossfade_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(12.dp))
-                EngineSwitchRow(
-                    title = stringResource(R.string.loudness_normalize),
-                    subtitle = stringResource(R.string.loudness_normalize_sub),
-                    checked = app.loudnessNormalize,
-                    onChecked = {
-                        scope.launch {
-                            appStore.setLoudnessNormalize(it)
-                            ForgeLoudness.setNormalizeEnabled(it)
-                        }
-                    },
-                )
-            }
-
-            }
-            if (matches("pin", "lock", "biometric")) {
-            SettingsCard(title = stringResource(R.string.pin_lock)) {
                 Text(stringResource(R.string.pin_lock_sub), color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(10.dp))
                 if (pinState.enabled) {
@@ -843,60 +889,34 @@ fun SettingsScreen(onBack: () -> Unit) {
                         pinDialog = true
                     }) { Text(stringResource(R.string.pin_set), color = ForgeAccent) }
                 }
-            }
-
-            }
-            if (matches("cache", "storage", "library", "thumb")) {
-            SettingsCard(title = stringResource(R.string.cache_storage)) {
-                val vids = storageHint.videoCount
-                val auds = storageHint.audioCount
-                val bytes = storageHint.totalBytes
-                val sizeLabel = when {
-                    bytes >= 1_000_000_000L -> "%.1f GB".format(bytes / 1_000_000_000.0)
-                    bytes >= 1_000_000L -> "%.0f MB".format(bytes / 1_000_000.0)
-                    bytes >= 1_000L -> "%.0f KB".format(bytes / 1_000.0)
-                    else -> "$bytes B"
+                Spacer(Modifier.height(16.dp))
+                Text("Backup & restore", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(4.dp))
+                Text("Export settings, playlists, favorites, streams, and bookmarks as JSON. Share or save the file, then import on another device.", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        pendingExportShare = false
+                        exportLauncher.launch("forge-backup.json")
+                    }) { Text("Export", color = ForgeAccent) }
+                    TextButton(onClick = {
+                        pendingExportShare = true
+                        exportLauncher.launch("forge-backup.json")
+                    }) { Text("Share", color = ForgeAccent) }
+                    TextButton(onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }) { Text("Import", color = Color.White) }
                 }
-                Text(
-                    stringResource(R.string.library_counts) + ": $vids videos · $auds audio · ~$sizeLabel",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(10.dp))
-                TextButton(onClick = {
-                    scope.launch {
-                        runCatching {
-                            context.imageLoader.memoryCache?.clear()
-                            context.imageLoader.diskCache?.clear()
-                        }
-                        cacheMessage = context.getString(R.string.clear_image_cache_done)
-                    }
-                }) {
-                    Text(stringResource(R.string.clear_image_cache), color = ForgeAccent)
-                }
-                cacheMessage?.let {
+                backupMessage?.let {
                     Spacer(Modifier.height(6.dp))
                     Text(it, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
                 }
             }
-
-            }
-            if (matches("history", "recent", "resume", "clear")) {
-            SettingsCard(title = "History") {
-                Text(
-                    "Clear recently played items. Optionally also wipe saved resume positions.",
-                    color = ForgeMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(10.dp))
-                TextButton(onClick = { clearDialog = true }) {
-                    Text("Clear history…", color = ForgeAccent)
-                }
             }
 
-            }
+            // ── About ──────────────────────────────────────────────────
             if (matches("about", "version", "forge")) {
-            SettingsCard(title = "About") {
+            SettingsCard(title = stringResource(R.string.settings_section_about)) {
                 Text(
                     text = "Forge",
                     style = MaterialTheme.typography.headlineLarge,
@@ -910,7 +930,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "Version",
+                    text = stringResource(R.string.version_label),
                     style = MaterialTheme.typography.labelSmall,
                     color = ForgeMuted,
                 )
@@ -921,7 +941,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.25.0 · swipe-down close · double-tap lock · breadcrumbs · shuffle all · settings search · audio focus",
+                    text = "1.27.0 · stability / polish · VLC-like settings sections",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )
@@ -935,7 +955,6 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
         }
     }
-
 
     if (pinDialog) {
         AlertDialog(

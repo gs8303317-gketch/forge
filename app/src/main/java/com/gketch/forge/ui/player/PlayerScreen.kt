@@ -194,7 +194,9 @@ import com.gketch.forge.ui.theme.ForgeAccent
 import com.gketch.forge.ui.theme.ForgeBlack
 import com.gketch.forge.ui.theme.ForgeGraphite
 import com.gketch.forge.ui.theme.ForgeMuted
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlinx.coroutines.launch
@@ -259,6 +261,8 @@ fun PlayerScreen(
     var appSettings by remember { mutableStateOf(AppSettings()) }
     var resumePromptMs by remember { mutableStateOf<Long?>(null) }
     var pendingResumeUri by remember { mutableStateOf<String?>(null) }
+    /** Bumped on each open/retarget so in-flight resume prompts cannot race onto a new item. */
+    var resumeEpoch by remember { mutableIntStateOf(0) }
     var savedSpeed by remember { mutableFloatStateOf(1f) }
     var holdBoosting by remember { mutableStateOf(false) }
     var uriSpeedLocked by remember { mutableStateOf(false) }
@@ -474,8 +478,9 @@ fun PlayerScreen(
 
                 override fun onPlayerError(error: PlaybackException) {
                     val message = PlaybackErrors.userMessage(error)
-                    if (PlaybackErrors.shouldAutoRetry(error, errorRetryCount)) {
-                        errorRetryCount += 1
+                    val uiFault = PlaybackErrors.isLikelyUiFault(error)
+                    if (uiFault || PlaybackErrors.shouldAutoRetry(error, errorRetryCount)) {
+                        if (!uiFault) errorRetryCount += 1
                         errorRetrying = true
                         playerError = null
                         val pos = runCatching { player.currentPosition }.getOrDefault(0L)
@@ -487,7 +492,8 @@ fun PlayerScreen(
                                 player.play()
                             }.isSuccess
                             errorRetrying = false
-                            if (!ok) {
+                            // Never pin a permanent overlay for Compose/UI faults.
+                            if (!ok && !uiFault) {
                                 playerError = message
                                 isPlaying = false
                             }
@@ -564,6 +570,7 @@ fun PlayerScreen(
                             if (uri in resumeIgnoreUris) {
                                 resumeIgnoreUris.remove(uri)
                             } else {
+                                val transitionEpoch = resumeEpoch
                                 scope.launch {
                                     applyResumePolicy(
                                         player = player,
@@ -571,10 +578,12 @@ fun PlayerScreen(
                                         behavior = resumeBehaviorState.value,
                                         resumeStore = resumeStore,
                                         onPrompt = { saved ->
-                                            player.pause()
-                                            pendingResumeUri = uri
-                                            resumePromptMs = saved
-                                            rememberResumeChoice = false
+                                            if (transitionEpoch == resumeEpoch) {
+                                                player.pause()
+                                                pendingResumeUri = uri
+                                                resumePromptMs = saved
+                                                rememberResumeChoice = false
+                                            }
                                         },
                                     )
                                 }
@@ -710,6 +719,8 @@ fun PlayerScreen(
             externalSubtitleUri = null
             autoSidecarForUri = null
             tracksRestoredUri = null
+            resumeEpoch += 1
+            val openEpoch = resumeEpoch
             resumePromptMs = null
             pendingResumeUri = null
             rememberResumeChoice = false
@@ -736,10 +747,12 @@ fun PlayerScreen(
                         behavior = appSettings.resumeBehavior,
                         resumeStore = resumeStore,
                         onPrompt = { saved ->
-                            player.pause()
-                            pendingResumeUri = startUri
-                            resumePromptMs = saved
-                            rememberResumeChoice = false
+                            if (openEpoch == resumeEpoch) {
+                                player.pause()
+                                pendingResumeUri = startUri
+                                resumePromptMs = saved
+                                rememberResumeChoice = false
+                            }
                         },
                     )
                 } else {
@@ -776,6 +789,8 @@ fun PlayerScreen(
         externalSubtitleUri = null
         autoSidecarForUri = null
         tracksRestoredUri = null
+        resumeEpoch += 1
+        val openEpoch = resumeEpoch
         resumePromptMs = null
         pendingResumeUri = null
         rememberResumeChoice = false
@@ -783,17 +798,21 @@ fun PlayerScreen(
         errorRetryCount = 0
         errorRetrying = false
 
-        val items = playQueue.mapNotNull { item ->
-            val uri = item.uri
-            if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) return@mapNotNull null
-            val sidecar = runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
-            buildPlayerMediaItem(item, sidecar)
+        val items = withContext(Dispatchers.IO) {
+            playQueue.mapNotNull { item ->
+                val uri = item.uri
+                if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) return@mapNotNull null
+                val sidecar = runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
+                buildPlayerMediaItem(item, sidecar)
+            }
         }
         // Reflect auto-loaded sidecar on the start item for subtitle UI state.
         runCatching {
             val startItem = playQueue.getOrNull(safeStart)
             if (startItem != null) {
-                val sc = SidecarSubtitles.find(context, startItem)
+                val sc = withContext(Dispatchers.IO) {
+                    SidecarSubtitles.find(context, startItem)
+                }
                 if (sc != null) {
                     externalSubtitleUri = sc
                     autoSidecarForUri = startItem.uri.toString()
@@ -831,9 +850,11 @@ fun PlayerScreen(
                 player.repeatMode = repeatMode
                 player.shuffleModeEnabled = shuffleOn
                 player.pause()
-                pendingResumeUri = startUri2
-                resumePromptMs = resumeAt
-                rememberResumeChoice = false
+                if (openEpoch == resumeEpoch) {
+                    pendingResumeUri = startUri2
+                    resumePromptMs = resumeAt
+                    rememberResumeChoice = false
+                }
             } else {
                 player.setMediaItems(items, safeStart, startPosition.coerceAtLeast(0L))
                 player.prepare()

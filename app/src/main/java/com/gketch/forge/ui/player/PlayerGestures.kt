@@ -302,13 +302,17 @@ fun PlayerGestureLayer(
                                 start.x <= leftEdge -> if (invert) GestureKind.Volume else GestureKind.Brightness
                                 start.x >= rightEdge -> if (invert) GestureKind.Brightness else GestureKind.Volume
                                 // Center vertical: swipe-down closes (never steals edge brightness/volume).
-                                swipeDownState.value && swipeDownCb.value != null && total.y > slop -> GestureKind.Dismiss
+                                // Require clear vertical dominance so slight diagonal seek doesn't dismiss.
+                                swipeDownState.value && swipeDownCb.value != null &&
+                                    total.y > slop && abs(total.y) > abs(total.x) * 1.15f -> GestureKind.Dismiss
                                 else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
                             startBrit = brightnessState.value().coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
                             startPos = positionState.value
                             kind = classified
+                            // Avoid SeekHud jumping to 0 before first drag delta.
+                            if (classified == GestureKind.Seek) previewMs = startPos
                         }
                         if (classified != null) {
                             change.consume()

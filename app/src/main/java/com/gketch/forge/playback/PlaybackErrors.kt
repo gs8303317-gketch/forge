@@ -63,6 +63,30 @@ object PlaybackErrors {
             errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
     }
 
+
+    /**
+     * True when the failure looks like a Compose/UI/runtime fault rather than media decode/IO.
+     * Player should auto-retry silently and avoid a permanent "Can't play" overlay.
+     */
+    fun isLikelyUiFault(error: PlaybackException): Boolean =
+        isLikelyUiFault(error.message, error.cause)
+
+    fun isLikelyUiFault(message: String?, cause: Throwable?): Boolean {
+        val root = deepestCause(cause ?: Throwable())
+        val hay = listOfNotNull(message, cause?.message, root.message, root.javaClass.name)
+            .joinToString(" ")
+            .lowercase()
+        return listOf(
+            "compose",
+            "snapshot",
+            "layoutnode",
+            "androidx.compose",
+            "recompose",
+            "modifier.nod",
+            "semantics",
+        ).any { it in hay }
+    }
+
     private fun deepestCause(t: Throwable): Throwable {
         var cur = t
         var guard = 0

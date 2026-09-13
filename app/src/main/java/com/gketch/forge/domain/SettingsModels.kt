@@ -30,7 +30,7 @@ enum class SubtitlePosition(val label: String, val bottomFraction: Float) {
 }
 
 enum class AccentPreset(val label: String, val color: Long, val soft: Long) {
-    EMBER("Ember", 0xFFFF6B35, 0xFFFF8F66),
+    EMBER("Orange", 0xFFFF8800, 0xFFFFB04A),
     AMBER("Amber", 0xFFFFB020, 0xFFFFC85A),
     LIME("Lime", 0xFFB8E63B, 0xFFD4F06A),
     TEAL("Teal", 0xFF2EC4B6, 0xFF7EE0D6),

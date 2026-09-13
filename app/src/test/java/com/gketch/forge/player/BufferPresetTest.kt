@@ -21,8 +21,9 @@ class BufferPresetTest {
 
     @Test
     fun largePresetKeepsSafeRebuffer() {
-        assertEquals(1_000, BufferPreset.LARGE.playbackMs)
-        assertEquals(8_000, BufferPreset.LARGE.rebufferMs)
+        assertEquals(600, BufferPreset.LARGE.playbackMs)
+        assertEquals(5_000, BufferPreset.LARGE.rebufferMs)
         assertEquals(35_000, BufferPreset.LARGE.minMs)
+        assertTrue(BufferPreset.LARGE.maxMs >= 100_000)
     }
 }

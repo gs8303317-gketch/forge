@@ -55,7 +55,8 @@ class PlayerScrubTest {
         decidePreviewSeek(10_000L, hold, 1_000L)
         hold.lastSeekMs = 10_000L
         hold.lastSeekAt = 1_000L
-        val d = decidePreviewSeek(12_000L, hold, 1_080L)
+        // 400ms media / 80ms wall = 5× → fast, not fling; still inside 140ms throttle
+        val d = decidePreviewSeek(10_400L, hold, 1_080L)
         assertFalse(d.shouldSeek)
         assertTrue(hold.fast)
     }

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -109,8 +108,6 @@ fun MiniPlayerBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp))
             .background(ForgeGraphite)
             .clickable(onClick = onExpand),
     ) {
@@ -123,26 +120,20 @@ fun MiniPlayerBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .height(56.dp)
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ForgeThumbnailUri(
                 uri = artUri,
                 isVideo = isVideo,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(4.dp)),
             )
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                Icons.Rounded.ExpandLess,
-                contentDescription = null,
-                tint = ForgeAccent,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = title,
                 color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -152,6 +143,7 @@ fun MiniPlayerBar(
                     val p = controller ?: return@IconButton
                     if (p.isPlaying) p.pause() else p.play()
                 },
+                modifier = Modifier.size(44.dp),
             ) {
                 Icon(
                     if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -165,11 +157,12 @@ fun MiniPlayerBar(
                     visible = false
                     onStopped()
                 },
+                modifier = Modifier.size(44.dp),
             ) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Stop",
-                    tint = Color.White,
+                    tint = Color.White.copy(alpha = 0.85f),
                 )
             }
         }

@@ -30,6 +30,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Polish 1.27.0: VLC-like settings sections; resume open/next race harden; scrub seek init; swipe-down dominance; mini-player STOP clears notification; sidecar I/O off main thread
 - UI hotfix 1.27.1: VLC-like library TopAppBar (section title single-line; search/sort/view + overflow); readable Default sans typography; leaner chrome density
 - Polish 1.27.2: VLC-like player chrome (primary transport + calm secondary tools); gesture seek/brightness/volume/dismiss refine; LazyRow home strips + smooth queue scroll
+- Polish 1.27.3: denser VLC-like library/history/audio rows; flat mini-player bar; tighter settings preference rows; calmer permission + dialogs; icon-only secondary player tools
 - Player 1.25.0: swipe-down to close player (Settings, default on); optional double-tap center lock; Browse/folder breadcrumbs; shuffle-all on Video/Audio; settings search; audio focus Pause vs Duck
 - Player 1.24.0: tap time for remaining (−mm:ss) vs elapsed; remember speed + aspect per URI; hold-to-speed 1.5×–3×; disable/invert brightness·volume·seek gestures; stronger subtitle outline/shadow
 - Player error UI (message + back — never kill process on media failure)

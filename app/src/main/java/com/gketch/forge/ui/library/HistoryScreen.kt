@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,17 +75,16 @@ fun HistoryScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 4.dp, vertical = 0.dp),
         ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
-            Icon(Icons.Rounded.History, null, tint = ForgeAccent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
             Text(
-                "Playback history",
+                "History",
                 style = MaterialTheme.typography.titleLarge,
-                color = Color.White,
+                color = ForgeAccent,
+                maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
             if (recent.isNotEmpty()) {
@@ -97,51 +95,60 @@ fun HistoryScreen(
         }
         if (recent.isEmpty()) {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(32.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("No playback history yet", color = ForgeMuted)
+                Text(
+                    "No playback history yet",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Played media will show up here",
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize(),
                 state = listState,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 items(recent, key = { it.uri.toString() }) { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(ForgeGraphite)
                             .clickable { onPlay(item) }
-                            .padding(10.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         ForgeThumbnail(
                             item = item,
-                            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)),
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp)),
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 item.title,
                                 color = Color.White,
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
                                 if (item.isVideo) "Video" else "Audio",
                                 color = ForgeMuted,
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                         IconButton(
                             onClick = { scope.launch { recentStore.remove(item.uri) } },
+                            modifier = Modifier.size(40.dp),
                         ) {
-                            Icon(Icons.Rounded.Delete, contentDescription = "Remove", tint = ForgeMuted)
+                            Icon(Icons.Rounded.Delete, contentDescription = "Remove", tint = ForgeMuted, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -155,10 +162,22 @@ fun HistoryScreen(
             onDismissRequest = { clearDialog = false },
             title = { Text("Clear history", color = Color.White) },
             text = {
-                Text(
-                    "Remove all recently played items? Resume positions can be cleared too.",
-                    color = ForgeMuted,
-                )
+                Column {
+                    Text(
+                        "Remove all recently played items? Resume positions can be cleared too.",
+                        color = ForgeMuted,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                recentStore.clear()
+                                resumeStore.clearAll()
+                                clearDialog = false
+                            }
+                        },
+                    ) { Text("Clear recent + resume", color = Color.White) }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -171,19 +190,8 @@ fun HistoryScreen(
                 ) { Text("Clear recent", color = ForgeAccent) }
             },
             dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                recentStore.clear()
-                                resumeStore.clearAll()
-                                clearDialog = false
-                            }
-                        },
-                    ) { Text("Clear all", color = Color.White) }
-                    TextButton(onClick = { clearDialog = false }) {
-                        Text("Cancel", color = ForgeMuted)
-                    }
+                TextButton(onClick = { clearDialog = false }) {
+                    Text("Cancel", color = ForgeMuted)
                 }
             },
             containerColor = ForgeGraphite,

@@ -114,7 +114,11 @@ fun AudioGroupsList(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(stringResource(R.string.no_media), color = ForgeMuted)
+            Text(
+                stringResource(R.string.no_media),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+            )
         }
         return
     }
@@ -128,22 +132,22 @@ fun AudioGroupsList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onOpen(group) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ForgeThumbnailUri(
                     uri = group.thumbUri ?: group.tracks.firstOrNull()?.albumArtUri,
                     isVideo = false,
                     modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(10.dp)),
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(4.dp)),
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         group.title,
                         color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

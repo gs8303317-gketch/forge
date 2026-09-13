@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -186,7 +187,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(ForgeBlack)
-            .padding(16.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
@@ -229,7 +230,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // ── Interface ──────────────────────────────────────────────
             if (matches(
@@ -1064,12 +1065,16 @@ private fun SettingsCard(title: String, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(ForgeGraphite)
-            .padding(20.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = ForgeAccent)
-        Spacer(Modifier.height(12.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            color = ForgeAccent,
+        )
+        Spacer(Modifier.height(8.dp))
         content()
     }
 }
@@ -1081,26 +1086,29 @@ private fun EngineSwitchRow(
     checked: Boolean,
     onChecked: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, style = MaterialTheme.typography.bodyLarge)
-            Text(subtitle, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = ForgeMuted.copy(alpha = 0.18f), thickness = 0.5.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(title, color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                Text(subtitle, color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onChecked,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = ForgeAccent,
+                    uncheckedThumbColor = ForgeMuted,
+                    uncheckedTrackColor = ForgeBlack,
+                ),
+            )
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onChecked,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.Black,
-                checkedTrackColor = ForgeAccent,
-                uncheckedThumbColor = ForgeMuted,
-                uncheckedTrackColor = ForgeBlack,
-            ),
-        )
     }
 }
 

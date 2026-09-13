@@ -86,7 +86,7 @@ fun PermissionScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(ForgeBlack)
-            .padding(28.dp),
+            .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -94,41 +94,41 @@ fun PermissionScreen(
             imageVector = Icons.Rounded.PlayCircle,
             contentDescription = null,
             tint = ForgeAccent,
-            modifier = Modifier.size(88.dp),
+            modifier = Modifier.size(64.dp),
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
             text = "Media access",
-            style = MaterialTheme.typography.headlineLarge,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Forge needs access to your videos and audio to build your library.",
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
         Button(
             onClick = { launcher.launch(mediaPermissions()) },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = ForgeAccent),
         ) {
-            Text("Allow access", modifier = Modifier.padding(vertical = 6.dp))
+            Text("Allow access", modifier = Modifier.padding(vertical = 4.dp))
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = onSkip,
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = ForgeAccent),
         ) {
             Text("Skip for now — open a stream")
         }
         if (permanentlyDenied) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
                     val intent = Intent(
@@ -138,13 +138,13 @@ fun PermissionScreen(
                     context.startActivity(intent)
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = ForgeAccent),
             ) {
                 Text("Open settings")
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
             text = "You can change this anytime in system settings.",
             style = MaterialTheme.typography.labelSmall,

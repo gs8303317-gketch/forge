@@ -80,6 +80,7 @@ import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Button
@@ -800,10 +801,19 @@ fun LibraryScreen(
             containerColor = ForgeGraphite,
             title = { Text("Clear history", color = Color.White) },
             text = {
-                Text(
-                    "Remove recently played items. Optionally also clear saved resume positions.",
-                    color = ForgeMuted,
-                )
+                Column {
+                    Text(
+                        "Remove recently played items. You can also clear saved resume positions.",
+                        color = ForgeMuted,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            viewModel.clearHistory(alsoResume = true)
+                            showClearHistory = false
+                        },
+                    ) { Text("Clear recent + resume", color = Color.White) }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -814,16 +824,8 @@ fun LibraryScreen(
                 ) { Text("Clear recent", color = ForgeAccent) }
             },
             dismissButton = {
-                Row {
-                    TextButton(
-                        onClick = {
-                            viewModel.clearHistory(alsoResume = true)
-                            showClearHistory = false
-                        },
-                    ) { Text("Recent + resume", color = Color.White) }
-                    TextButton(onClick = { showClearHistory = false }) {
-                        Text("Cancel", color = ForgeMuted)
-                    }
+                TextButton(onClick = { showClearHistory = false }) {
+                    Text("Cancel", color = ForgeMuted)
                 }
             },
         )
@@ -1021,10 +1023,18 @@ private fun LibraryBody(
         }
         state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() && recentlyAdded.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No media found", color = ForgeMuted)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Open or save a network stream with the link button", color = ForgeMuted)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                    Text(
+                        "No media found",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Open a stream from ⋮ or grant media access",
+                        color = ForgeMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
@@ -1033,9 +1043,9 @@ private fun LibraryBody(
                 columns = GridCells.Adaptive(140.dp),
                 modifier = Modifier.fillMaxSize().padding(padding),
                 state = gridState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "fav-header") {
@@ -1064,7 +1074,7 @@ private fun LibraryBody(
                 item(span = { GridItemSpan(maxLineSpan) }, key = "lib-header") {
                     Text(
                         text = sectionTitle,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         color = ForgeMuted,
                         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
                     )
@@ -1093,8 +1103,8 @@ private fun LibraryBody(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 if (kindFavs.isNotEmpty() && state.query.isBlank()) {
                     item(key = "fav-header") {
@@ -1123,9 +1133,9 @@ private fun LibraryBody(
                 item(key = "lib-header") {
                     Text(
                         text = sectionTitle,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         color = ForgeMuted,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     )
                 }
                 itemsIndexed(state.filtered, key = { _, item -> item.stableKey() }) { index, item ->
@@ -1187,11 +1197,11 @@ private fun FoldersBody(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             state = browseListState,
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item(key = "browse-actions") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onAddSafFolder) {
                         Icon(Icons.Rounded.CreateNewFolder, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -1206,7 +1216,12 @@ private fun FoldersBody(
             }
             if (streams.isNotEmpty()) {
                 item(key = "streams-label") {
-                    Text(stringResource(R.string.streams), color = ForgeMuted, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        stringResource(R.string.streams),
+                        color = ForgeMuted,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
                 items(streams, key = { it.id }) { stream ->
                     SavedStreamRow(
@@ -1297,8 +1312,8 @@ private fun FoldersBody(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = folderListState,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     items(state.folderSubfolders, key = { "sub-$it" }) { name ->
                         SubfolderRow(name = name, onClick = { onOpenSubfolder(name) })
@@ -1327,9 +1342,9 @@ private fun FoldersBody(
                     columns = GridCells.Adaptive(140.dp),
                     modifier = Modifier.fillMaxSize(),
                     state = folderGridState,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.folderSubfolders, key = { "sub-$it" }) { name ->
                         SubfolderRow(name = name, onClick = { onOpenSubfolder(name) })
@@ -1406,15 +1421,13 @@ private fun SubfolderRow(name: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Folder, contentDescription = null, tint = ForgeAccent)
+        Icon(Icons.Rounded.Folder, contentDescription = null, tint = ForgeAccent, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
-        Text(name, color = Color.White, style = MaterialTheme.typography.titleMedium)
+        Text(name, color = Color.White, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -1440,12 +1453,12 @@ private fun PlaylistsBody(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             state = playlistsListState,
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 8.dp, bottom = 88.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(onClick = onImportM3u) {
@@ -1503,8 +1516,8 @@ private fun PlaylistsBody(
             }
             LazyColumn(
                 state = playlistItemsState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 8.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 if (selected.items.isEmpty()) {
                     item { Text("Playlist is empty. Star or add items from the library.", color = ForgeMuted) }
@@ -1559,7 +1572,7 @@ private fun ContinueWatchingSection(
     onPlay: (ForgeMediaItem) -> Unit,
     onRemove: (ForgeMediaItem) -> Unit = {},
 ) {
-    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+    Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.PlayCircle, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
@@ -1576,13 +1589,13 @@ private fun ContinueWatchingSection(
                 Column(
                     modifier = Modifier
                         .width(120.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(ForgeGraphite)
                         .combinedClickable(
                             onClick = { onPlay(cw.item) },
                             onLongClick = { onRemove(cw.item) },
                         )
-                        .padding(8.dp),
+                        .padding(6.dp),
                 ) {
                         ThumbBox(
                             item = cw.item,
@@ -1609,7 +1622,7 @@ private fun FavoritesSection(
     items: List<ForgeMediaItem>,
     onPlay: (ForgeMediaItem) -> Unit,
 ) {
-    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+    Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Star, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
@@ -1632,7 +1645,7 @@ private fun RecentlyAddedSection(
     items: List<ForgeMediaItem>,
     onPlay: (ForgeMediaItem) -> Unit,
 ) {
-    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+    Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.NewReleases, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
@@ -1729,8 +1742,8 @@ private fun MediaGridCard(
     var menu by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) ForgeSurfaceVariant else ForgeGraphite)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) ForgeSurfaceVariant else Color.Transparent)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
@@ -1738,7 +1751,7 @@ private fun MediaGridCard(
                     if (!selecting) menu = true
                 },
             )
-            .padding(6.dp),
+            .padding(4.dp),
     ) {
         Box {
             ThumbBox(
@@ -1803,10 +1816,10 @@ private fun MediaGridCard(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = item.title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = Color.White,
             maxLines = 2,
             softWrap = true,
@@ -1841,8 +1854,7 @@ private fun MediaRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) ForgeSurfaceVariant else ForgeGraphite)
+            .background(if (selected) ForgeSurfaceVariant else Color.Transparent)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
@@ -1850,17 +1862,17 @@ private fun MediaRow(
                     if (!selecting) menu = true
                 },
             )
-            .padding(10.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            ThumbBox(item = item, modifier = Modifier.size(64.dp))
+            ThumbBox(item = item, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp)))
             if (watched) {
                 Icon(
                     Icons.Rounded.Visibility,
                     contentDescription = null,
                     tint = ForgeAccent,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).size(14.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).size(12.dp),
                 )
             }
         }
@@ -1868,12 +1880,11 @@ private fun MediaRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            Spacer(Modifier.height(4.dp))
             Text(
                 text = buildString {
                     if (!item.isVideo && item.artist.isNotBlank()) {
@@ -1885,17 +1896,18 @@ private fun MediaRow(
                     }
                     append(formatDuration(item.durationMs))
                 },
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = ForgeMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = onToggleFavorite) {
+        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(40.dp)) {
             Icon(
                 if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                 contentDescription = "Favorite",
                 tint = if (favorite) ForgeAccent else ForgeMuted,
+                modifier = Modifier.size(22.dp),
             )
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = ForgeGraphite) {
@@ -1936,10 +1948,10 @@ private fun MediaRow(
 private fun FolderCard(folder: MediaFolder, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(10.dp),
+            .padding(4.dp),
     ) {
         ForgeThumbnailUri(
             uri = folder.thumbUri,
@@ -1947,11 +1959,12 @@ private fun FolderCard(folder: MediaFolder, onClick: () -> Unit, onLongClick: ()
             folder = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f),
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(6.dp)),
         )
-        Spacer(Modifier.height(8.dp))
-        Text(folder.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(4.dp))
+        Text(folder.name, color = Color.White, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -1961,22 +1974,20 @@ private fun FolderRow(folder: MediaFolder, onClick: () -> Unit, onLongClick: () 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(12.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ForgeThumbnailUri(
             uri = folder.thumbUri,
             isVideo = folder.kindHint == MediaKind.VIDEO,
             folder = true,
-            modifier = Modifier.size(52.dp),
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(4.dp)),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(folder.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+            Text(folder.name, color = Color.White, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${folder.itemCount} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -1994,25 +2005,23 @@ private fun PlaylistRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
             .clickable(onClick = onOpen)
-            .padding(12.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp))
                 .background(ForgeSurfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent)
+            Icon(Icons.Rounded.QueueMusic, null, tint = ForgeAccent, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(playlist.name, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            Text("${playlist.items.size} items", color = ForgeMuted, style = MaterialTheme.typography.bodyMedium)
+            Text(playlist.name, color = Color.White, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${playlist.items.size} items", color = ForgeMuted, style = MaterialTheme.typography.bodySmall)
         }
         IconButton(onClick = onPlay, enabled = playlist.items.isNotEmpty()) {
             Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = ForgeAccent)
@@ -2143,8 +2152,8 @@ private fun StreamsBody(
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 8.dp, bottom = 88.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         if (streams.isEmpty()) {
             item {
@@ -2227,16 +2236,14 @@ private fun SavedStreamRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ForgeGraphite)
             .clickable(onClick = onPlay)
-            .padding(12.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp))
                 .background(ForgeSurfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -2244,7 +2251,7 @@ private fun SavedStreamRow(
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(stream.name, color = Color.White, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(stream.name, color = Color.White, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(stream.url, color = ForgeMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         IconButton(onClick = onPlay) {

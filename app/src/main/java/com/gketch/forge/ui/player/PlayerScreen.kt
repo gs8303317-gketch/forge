@@ -2515,7 +2515,7 @@ fun PlayerScreen(
                             pendingResumeUri = null
                             rememberResumeChoice = false
                         },
-                    ) { Text("Continue", color = ForgeAccent) }
+                    ) { Text("Resume", color = ForgeAccent) }
                 },
                 dismissButton = {
                     TextButton(
@@ -2536,7 +2536,7 @@ fun PlayerScreen(
                             pendingResumeUri = null
                             rememberResumeChoice = false
                         },
-                    ) { Text("Start over", color = Color.White) }
+                    ) { Text("Start over", color = ForgeMuted) }
                 },
             )
         }
@@ -3204,15 +3204,14 @@ private fun PlayerControls(
                 }
             }
             if (showAspect) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(40.dp)
                         .combinedClickable(
                             onClick = onCycleAspect,
                             onLongClick = onLongAspect,
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         Icons.Rounded.AspectRatio,
@@ -3220,52 +3219,25 @@ private fun PlayerControls(
                         tint = ForgeAccent.copy(alpha = 0.95f),
                         modifier = Modifier.size(secondaryIcon),
                     )
-                    Text(
-                        text = aspectLabel,
-                        color = Color.White.copy(alpha = 0.8f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
                 }
             }
             if (showOrientToggle) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onToggleOrient)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
+                IconButton(onClick = onToggleOrient, modifier = Modifier.size(40.dp)) {
                     Icon(
                         Icons.Rounded.ScreenRotation,
                         contentDescription = stringResource(R.string.orient_toggle, orientLabel),
                         tint = if (orientLabel == "Auto") Color.White.copy(alpha = 0.85f) else ForgeAccent,
                         modifier = Modifier.size(secondaryIcon),
                     )
-                    Text(
-                        text = orientLabel,
-                        color = Color.White.copy(alpha = 0.8f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
                 }
             }
             if (showSkipIntro && skipIntroSeconds > 0) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable(onClick = onSkipIntro)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
+                IconButton(onClick = onSkipIntro, modifier = Modifier.size(40.dp)) {
                     Icon(
                         Icons.Rounded.FastForward,
-                        contentDescription = stringResource(R.string.skip_intro),
+                        contentDescription = stringResource(R.string.skip_intro) + " ${skipIntroSeconds}s",
                         tint = ForgeAccent.copy(alpha = 0.95f),
                         modifier = Modifier.size(secondaryIcon),
-                    )
-                    Text(
-                        text = "${skipIntroSeconds}s",
-                        color = Color.White.copy(alpha = 0.8f),
-                        style = MaterialTheme.typography.labelSmall,
                     )
                 }
             }

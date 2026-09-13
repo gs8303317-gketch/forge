@@ -34,17 +34,18 @@ class ForgeApp : Application(), ImageLoaderFactory {
             }
             .memoryCache {
                 MemoryCache.Builder(this@ForgeApp)
-                    .maxSizePercent(0.20)
+                    .maxSizePercent(0.18)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil_thumbs"))
-                    .maxSizeBytes(96L * 1024L * 1024L)
+                    .maxSizeBytes(80L * 1024L * 1024L)
                     .build()
             }
             .crossfade(false)
             .allowRgb565(true)
+            .bitmapFactoryMaxParallelism(2)
             .respectCacheHeaders(false)
             .build()
 }

@@ -102,8 +102,14 @@ fun MiniPlayerBar(
     LaunchedEffect(controller, visible, playing) {
         if (controller == null || !visible || !playing) return@LaunchedEffect
         while (isActive) {
-            sync()
-            delay(1000)
+            val p = controller ?: break
+            val dur = p.duration
+            progress = if (dur > 0) {
+                (p.currentPosition.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+            delay(1500)
         }
     }
 

@@ -1,9 +1,11 @@
 package com.gketch.forge.domain
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 
 enum class MediaKind { VIDEO, AUDIO }
 
+@Immutable
 data class ForgeMediaItem(
     val id: Long,
     val uri: Uri,
@@ -27,6 +29,7 @@ data class ForgeMediaItem(
     fun stableKey(): String = "${kind.name}-$id-${uri}"
 }
 
+@Immutable
 data class MediaFolder(
     val bucketId: Long,
     val name: String,
@@ -35,6 +38,7 @@ data class MediaFolder(
     val kindHint: MediaKind,
 )
 
+@Immutable
 data class AudioBrowseGroup(
     val key: String,
     val title: String,

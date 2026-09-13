@@ -2,18 +2,17 @@ package com.gketch.forge.player
 
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Process-local bridge from UI (MediaController) to ExoPlayer-only engine knobs.
- * MediaController cannot configure AudioSink / video timestamp adjustment / skip-silence.
- */
 @UnstableApi
 object ForgeEngine {
     private val playerRef = AtomicReference<ExoPlayer?>(null)
     private val audioDelayMsRef = AtomicInteger(0)
+    private val scrubbingRef = AtomicBoolean(false)
 
+    val isScrubbing: Boolean get() = scrubbingRef.get()
     val audioDelayMs: Int get() = audioDelayMsRef.get()
 
     fun attach(player: ExoPlayer) {
@@ -27,7 +26,6 @@ object ForgeEngine {
 
     fun setAudioDelayMs(ms: Int) {
         audioDelayMsRef.set(ms.coerceIn(MIN_DELAY_MS, MAX_DELAY_MS))
-        // Video renderer reads audioDelayMs on each frame via getBufferTimestampAdjustmentUs.
     }
 
     fun setSkipSilence(enabled: Boolean) {
@@ -46,31 +44,23 @@ object ForgeEngine {
         playerRef.get()?.pauseAtEndOfMediaItems = pause
     }
 
-    /**
-     * Faster keyframe seeks while the user is scrubbing the main surface.
-     * Prefer PREVIOUS_SYNC (preceding keyframe) for responsive preview on 720p/x265;
-     * CLOSEST_SYNC as fallback. Restores precise-seek preference when [enabled] is false.
-     * Stay on Media3 1.5.1 for 1.28.1 — 1.11 scrubbingMode helps but risks
-     * Cast/session/renderer constructor churn on a hotfix. Pair with lighter UI scrub.
-     */
     fun setScrubSeek(enabled: Boolean) {
+        scrubbingRef.set(enabled)
         val p = playerRef.get() ?: return
         try {
             if (enabled) {
-                // Preceding keyframe is typically cheaper than bidirectional closest sync.
-                p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.PREVIOUS_SYNC)
+                p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
             } else {
                 applySeekPrefs(p)
             }
         } catch (_: Throwable) {
             try {
                 if (enabled) {
-                    p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+                    p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.PREVIOUS_SYNC)
                 } else {
                     applySeekPrefs(p)
                 }
             } catch (_: Throwable) {
-                // Optional — never fail playback.
             }
         }
     }

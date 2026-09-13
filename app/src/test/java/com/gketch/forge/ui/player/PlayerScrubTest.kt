@@ -21,19 +21,18 @@ class PlayerScrubTest {
         assertTrue(first.shouldSeek)
         hold.lastSeekMs = 10_000L
         hold.lastSeekAt = 1_000L
-        val d = decidePreviewSeek(10_200L, hold, 1_100L)
+        val d = decidePreviewSeek(10_200L, hold, 1_050L)
         assertFalse(d.shouldSeek)
     }
 
     @Test
-    fun flingSkipsPreviewSeeks() {
+    fun flingStillPreviewsWhenJumpIsLarge() {
         val hold = ScrubHold()
         decidePreviewSeek(10_000L, hold, 1_000L)
         hold.lastSeekMs = 10_000L
         hold.lastSeekAt = 1_000L
-        // 30s of media in 100ms wall ≈ 300× realtime
         val d = decidePreviewSeek(40_000L, hold, 1_100L)
-        assertFalse(d.shouldSeek)
+        assertTrue(d.shouldSeek)
         assertTrue(d.fling)
     }
 
@@ -56,10 +55,8 @@ class PlayerScrubTest {
         decidePreviewSeek(10_000L, hold, 1_000L)
         hold.lastSeekMs = 10_000L
         hold.lastSeekAt = 1_000L
-        // 2s media / 400ms wall = 5× → fast, not fling; 400ms < 520ms fast throttle
-        val d = decidePreviewSeek(12_000L, hold, 1_400L)
+        val d = decidePreviewSeek(12_000L, hold, 1_080L)
         assertFalse(d.shouldSeek)
-        assertFalse(d.fling)
         assertTrue(hold.fast)
     }
 }

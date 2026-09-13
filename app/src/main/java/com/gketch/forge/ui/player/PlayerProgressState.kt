@@ -7,13 +7,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.common.Player
+import com.gketch.forge.player.ForgeEngine
 
-/**
- * Progress / buffer / stats state owned outside heavy PlayerScreen reads.
- * Leaf composables (controls, stats, scrubber) subscribe; the parent screen
- * should avoid reading [positionMs] in its body so 10 Hz ticks don't rebuild
- * the whole player tree.
- */
 class PlayerProgressState {
     var positionMs by mutableLongStateOf(0L)
         private set
@@ -26,7 +21,6 @@ class PlayerProgressState {
     var playbackState by mutableIntStateOf(Player.STATE_IDLE)
         private set
 
-    // Stats (updated ≤4 Hz from a separate loop)
     var statsWidth by mutableIntStateOf(0)
         private set
     var statsHeight by mutableIntStateOf(0)
@@ -50,7 +44,7 @@ class PlayerProgressState {
         positionMs = position
         durationMs = duration
         bufferedMs = buffered
-        buffering = isBuffering
+        buffering = isBuffering && !ForgeEngine.isScrubbing
         playbackState = state
     }
 

@@ -1271,12 +1271,12 @@ fun PlayerScreen(
                 }
 
                 val density = LocalDensity.current
-                val excludeTopPx = with(density) { if (showChrome) 56.dp.toPx() else 0f }
+                val excludeTopPx = with(density) { if (showChrome) 48.dp.toPx() else 0f }
                 val excludeBottomPx = with(density) {
                     when {
-                        showChrome -> 148.dp.toPx()
-                        showLockChrome -> 72.dp.toPx()
-                        else -> 48.dp.toPx()
+                        showChrome -> 132.dp.toPx()
+                        showLockChrome -> 64.dp.toPx()
+                        else -> 40.dp.toPx()
                     }
                 }
                 // Slider / settle: last good frame + oversized timecode (gesture SeekHud covers swipe).

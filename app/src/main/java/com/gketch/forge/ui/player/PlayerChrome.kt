@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -253,17 +252,22 @@ internal fun PlayerTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .background(Color.Black.copy(alpha = 0.40f))
+            .background(Color.Black.copy(alpha = 0.32f))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onInteract,
             )
-            .padding(horizontal = 0.dp, vertical = 0.dp),
+            .padding(horizontal = 2.dp, vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White)
+        IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
         }
         Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
             Text(
@@ -298,18 +302,24 @@ internal fun PlayerTopBar(
             }
         }
         if (showPip) {
-            IconButton(onClick = onPip) {
+            IconButton(onClick = onPip, modifier = Modifier.size(40.dp)) {
                 Icon(
                     Icons.Outlined.PictureInPictureAlt,
                     contentDescription = "Picture in picture",
                     tint = Color.White,
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
         ForgeCastButton()
         Box {
-            IconButton(onClick = onMore) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "More", tint = Color.White)
+            IconButton(onClick = onMore, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Rounded.MoreVert,
+                    contentDescription = "More",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
             }
             DropdownMenu(
                 expanded = moreExpanded,
@@ -615,21 +625,21 @@ internal fun PlayerControls(
 
     val config = LocalConfiguration.current
     val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val vPad = if (landscape) 2.dp else 4.dp
-    val scrubTouch = if (landscape) 28.dp else 32.dp
-    val secondaryIcon = if (landscape) 18.dp else 20.dp
+    val vPad = if (landscape) 1.dp else 2.dp
+    val scrubTouch = if (landscape) 26.dp else 28.dp
+    val secondaryIcon = if (landscape) 18.dp else 18.dp
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .background(Color.Black.copy(alpha = 0.45f))
+            .background(Color.Black.copy(alpha = 0.36f))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onInteract,
             )
-            .padding(horizontal = if (landscape) 14.dp else 10.dp, vertical = vPad),
+            .padding(horizontal = if (landscape) 12.dp else 8.dp, vertical = vPad),
     ) {
         val playProgress = if (durationMs > 0) {
             (if (scrubbing) scrubValue else positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
@@ -642,7 +652,7 @@ internal fun PlayerControls(
             BufferedProgressTrack(
                 progress = playProgress,
                 buffered = bufferedFrac,
-                trackHeight = if (landscape) 5.dp else 6.dp,
+                trackHeight = if (landscape) 3.dp else 4.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.Center)
@@ -669,7 +679,7 @@ internal fun PlayerControls(
                     onToggleRemainingTime()
                     onInteract()
                 }
-                .padding(vertical = if (landscape) 0.dp else 1.dp),
+                .padding(vertical = 0.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -678,70 +688,67 @@ internal fun PlayerControls(
                 } else {
                     formatDuration(displayPos)
                 },
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.88f),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.82f),
             )
             Text(
                 text = formatDuration(durationMs),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.88f),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.82f),
             )
         }
-        // Primary transport — VLC-like centered prev / play / next
+        // Primary transport — VLC-like white icons, compact density
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = if (landscape) 0.dp else 2.dp),
+                .padding(vertical = if (landscape) 0.dp else 1.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showFrameStep) {
-                IconButton(onClick = { onFrameStep(false) }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { onFrameStep(false) }, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.ChevronLeft,
                         contentDescription = "Previous frame",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
-            IconButton(onClick = onPrev, enabled = canPrev, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onPrev, enabled = canPrev, modifier = Modifier.size(44.dp)) {
                 Icon(
                     Icons.Rounded.SkipPrevious,
                     contentDescription = "Previous",
                     tint = if (canPrev) Color.White else ForgeMuted,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(30.dp),
                 )
             }
             IconButton(
                 onClick = onPlayPause,
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(ForgeAccent),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = Color.Black,
-                    modifier = Modifier.size(28.dp),
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp),
                 )
             }
-            IconButton(onClick = onNext, enabled = canNext, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onNext, enabled = canNext, modifier = Modifier.size(44.dp)) {
                 Icon(
                     Icons.Rounded.SkipNext,
                     contentDescription = "Next",
                     tint = if (canNext) Color.White else ForgeMuted,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(30.dp),
                 )
             }
             if (showFrameStep) {
-                IconButton(onClick = { onFrameStep(true) }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { onFrameStep(true) }, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.ChevronRight,
                         contentDescription = "Next frame",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp),
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -750,11 +757,11 @@ internal fun PlayerControls(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = if (landscape) 0.dp else 2.dp, bottom = if (landscape) 0.dp else 2.dp),
+                .padding(top = 0.dp, bottom = if (landscape) 0.dp else 1.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onToggleShuffle, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onToggleShuffle, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Rounded.Shuffle,
                     contentDescription = "Shuffle",
@@ -762,7 +769,7 @@ internal fun PlayerControls(
                     modifier = Modifier.size(secondaryIcon),
                 )
             }
-            IconButton(onClick = onQueue, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onQueue, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Rounded.QueueMusic,
                     contentDescription = stringResource(R.string.queue),
@@ -771,7 +778,7 @@ internal fun PlayerControls(
                 )
             }
             if (showChapters) {
-                IconButton(onClick = onChapterPrev, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onChapterPrev, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.ChevronLeft,
                         contentDescription = stringResource(R.string.chapter_prev),
@@ -783,7 +790,7 @@ internal fun PlayerControls(
             if (showAspect) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(36.dp)
                         .combinedClickable(
                             onClick = onCycleAspect,
                             onLongClick = onLongAspect,
@@ -799,7 +806,7 @@ internal fun PlayerControls(
                 }
             }
             if (showOrientToggle) {
-                IconButton(onClick = onToggleOrient, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onToggleOrient, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.ScreenRotation,
                         contentDescription = stringResource(R.string.orient_toggle, orientLabel),
@@ -809,7 +816,7 @@ internal fun PlayerControls(
                 }
             }
             if (showSkipIntro && skipIntroSeconds > 0) {
-                IconButton(onClick = onSkipIntro, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onSkipIntro, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.FastForward,
                         contentDescription = stringResource(R.string.skip_intro) + " ${skipIntroSeconds}s",
@@ -819,7 +826,7 @@ internal fun PlayerControls(
                 }
             }
             if (showChapters) {
-                IconButton(onClick = onChapterNext, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onChapterNext, modifier = Modifier.size(36.dp)) {
                     Icon(
                         Icons.Rounded.ChevronRight,
                         contentDescription = stringResource(R.string.chapter_next),
@@ -828,7 +835,7 @@ internal fun PlayerControls(
                     )
                 }
             }
-            IconButton(onClick = onCycleRepeat, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onCycleRepeat, modifier = Modifier.size(36.dp)) {
                 Icon(
                     imageVector = when (repeatMode) {
                         Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne

@@ -3,7 +3,7 @@
 Premium Android media player (Kotlin + Jetpack Compose + Media3).
 
 
-## Architecture (1.28.0 / 1.28.1)
+## Architecture (1.28.0 / 1.28.1 / 1.28.2)
 
 Package layout after the software-engineering refactor (behavior unchanged):
 
@@ -22,6 +22,7 @@ applicationId remains `com.gketch.forge`.
 
 - Architecture 1.28.0: package tidy (`player/`, `domain/`, `di/`), split Player/Library/Settings god files — no intentional UX change
 - Hotfix 1.28.1: lighter seek preview (adaptive throttle + fling settle, last-frame + big timecode); faster first frame (sidecar after play, lower bufferForPlaybackMs); VLC-like scrub HUD
+- Polish 1.28.2: VLC-snappy gesture detectors (slop/axis-lock/dismiss threshold); quieter brightness/volume/seek HUDs; denser player chrome; swipe-down less aggressive so it never steals seek
 - Local video & audio library via MediaStore (thumbnail grid + list)
 - Reliable MediaStore/SAF thumbnails (`loadThumbnail` + Coil fetcher; album art for audio)
 - Immersive player (hides status + navigation bars while playing; restores on leave)

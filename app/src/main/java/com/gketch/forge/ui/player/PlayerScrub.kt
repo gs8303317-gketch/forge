@@ -201,27 +201,27 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
-/** VLC-like oversized timecode while the last decoded frame stays on screen. */
+/** VLC-like timecode while the last decoded frame stays on screen. */
 @Composable
 internal fun ScrubTimecodeHud(elapsedMs: Long, totalMs: Long) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.Black.copy(alpha = 0.78f))
-                .padding(horizontal = 28.dp, vertical = 16.dp),
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = 0.70f))
+                .padding(horizontal = 22.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
                 text = formatDuration(elapsedMs),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = Color.White,
             )
             if (totalMs > 0L) {
                 Text(
                     text = formatDuration(totalMs),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Color.White.copy(alpha = 0.72f),
                 )
             }

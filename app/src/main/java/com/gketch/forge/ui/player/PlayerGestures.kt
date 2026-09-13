@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,20 +46,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gketch.forge.data.BrightnessStore
 import com.gketch.forge.ui.library.formatDuration
-import com.gketch.forge.ui.theme.ForgeAccent
-import com.gketch.forge.ui.theme.ForgeGraphite
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
-private enum class GestureKind { Seek, Volume, Brightness, Dismiss }
+internal enum class GestureKind { Seek, Volume, Brightness, Dismiss }
 
-private const val EDGE_FRACTION = 0.20f
+/** Edge strips for brightness (left) / volume (right) — center reserved for seek + dismiss. */
+internal const val EDGE_FRACTION = 0.22f
 /** Left/right double-tap seek zones (center reserved for lock / chrome toggle). */
-private const val DOUBLE_TAP_ZONE = 0.35f
+internal const val DOUBLE_TAP_ZONE = 0.33f
 /** Swipe-down must clearly dominate horizontal so it never steals VLC-style seek. */
-private const val DISMISS_VERTICAL_RATIO = 2.0f
+internal const val DISMISS_VERTICAL_RATIO = 2.75f
+/** Fraction of height required before swipe-down closes (VLC-safe / less aggressive). */
+internal const val DISMISS_HEIGHT_FRACTION = 0.30f
+/** Vertical must beat horizontal by this ratio on edges before brightness/volume locks. */
+internal const val EDGE_VERTICAL_RATIO = 1.15f
+/** Hold-to-speed press timeout — snappy like VLC, still above tap. */
+internal const val HOLD_SPEED_MS = 360L
 /** Gesture brightness spans 0..2 (0%..200%); full-height swipe covers the range. */
 private const val BRIGHTNESS_SPAN = BrightnessStore.MAX
 /** Gesture volume spans 0..2 (0%..200%); above 1.0 continues into loudness boost. */
@@ -127,7 +133,7 @@ fun PlayerGestureLayer(
 
     LaunchedEffect(doubleTapFlash) {
         if (doubleTapFlash != null) {
-            delay(450)
+            delay(380)
             doubleTapFlash = null
         }
     }
@@ -161,17 +167,16 @@ fun PlayerGestureLayer(
                             zoomResetCb.value?.invoke()
                             return@detectTapGestures
                         }
-                        val zone = size.width * DOUBLE_TAP_ZONE
-                        when {
-                            offset.x < zone -> {
+                        when (doubleTapSeekBack(offset.x, size.width.toFloat())) {
+                            true -> {
                                 doubleTapFlash = true
                                 doubleTapState.value(true)
                             }
-                            offset.x > size.width - zone -> {
+                            false -> {
                                 doubleTapFlash = false
                                 doubleTapState.value(false)
                             }
-                            else -> {
+                            null -> {
                                 if (doubleTapLockState.value && doubleTapLockCb.value != null) {
                                     doubleTapLockCb.value?.invoke()
                                 } else {
@@ -193,7 +198,7 @@ fun PlayerGestureLayer(
                             tryAwaitRelease()
                             return@detectTapGestures
                         }
-                        val releasedEarly = withTimeoutOrNull(400) {
+                        val releasedEarly = withTimeoutOrNull(HOLD_SPEED_MS) {
                             tryAwaitRelease()
                             true
                         }
@@ -290,32 +295,33 @@ fun PlayerGestureLayer(
                     var startBrit = 0f
                     var startPos = positionState.value
                     val dur = durationState.value.coerceAtLeast(0L)
-                    val slop = 24f
-                    val leftEdge = size.width * EDGE_FRACTION
-                    val rightEdge = size.width * (1f - EDGE_FRACTION)
+                    // VLC-snappy: classify near system touch slop (not sticky 24px).
+                    val slop = viewConfiguration.touchSlop.coerceIn(8f, 20f)
                     val invert = invertState.value
 
                     drag(down.id) { change ->
                         val delta = change.positionChange()
                         total += delta
                         if (classified == null && (abs(total.x) > slop || abs(total.y) > slop)) {
-                            // VLC-like: horizontal dominate → seek anywhere; vertical on edges →
-                            // brightness/volume; center vertical → optional swipe-down close.
-                            classified = when {
-                                abs(total.x) >= abs(total.y) -> GestureKind.Seek
-                                start.x <= leftEdge -> if (invert) GestureKind.Volume else GestureKind.Brightness
-                                start.x >= rightEdge -> if (invert) GestureKind.Brightness else GestureKind.Volume
-                                swipeDownState.value && swipeDownCb.value != null &&
-                                    total.y > slop &&
-                                    abs(total.y) > abs(total.x) * DISMISS_VERTICAL_RATIO -> GestureKind.Dismiss
-                                else -> null
+                            classified = classifySwipeGesture(
+                                dx = total.x,
+                                dy = total.y,
+                                startX = start.x,
+                                startY = start.y,
+                                width = size.width.toFloat(),
+                                height = size.height.toFloat(),
+                                slop = slop,
+                                invertSides = invert,
+                                swipeDownEnabled = swipeDownState.value && swipeDownCb.value != null,
+                            )
+                            if (classified != null) {
+                                startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
+                                startBrit = brightnessState.value().coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
+                                startPos = positionState.value
+                                kind = classified
+                                // Avoid SeekHud jumping to 0 before first drag delta.
+                                if (classified == GestureKind.Seek) previewMs = startPos
                             }
-                            startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
-                            startBrit = brightnessState.value().coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
-                            startPos = positionState.value
-                            kind = classified
-                            // Avoid SeekHud jumping to 0 before first drag delta.
-                            if (classified == GestureKind.Seek) previewMs = startPos
                         }
                         if (classified != null) {
                             change.consume()
@@ -324,6 +330,7 @@ fun PlayerGestureLayer(
                             GestureKind.Seek -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)
                                 val window = if (dur > 0L) minOf(dur, 180_000L).toFloat() else 180_000f
+                                // Axis-locked: horizontal only (ignore vertical wobble).
                                 val deltaMs = ((total.x / size.width) * window * sens).roundToLong()
                                 val target = (startPos + deltaMs).coerceIn(0L, if (dur > 0L) dur else Long.MAX_VALUE)
                                 previewMs = target
@@ -331,7 +338,7 @@ fun PlayerGestureLayer(
                             }
                             GestureKind.Volume -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)
-                                // Full-height swipe covers 0..200% (system 0..100, then loudness boost).
+                                // Axis-locked vertical; full-height covers 0..200%.
                                 val next = (
                                     startVol - (total.y / size.height) * sens * VOLUME_SPAN
                                     ).coerceIn(0f, VOLUME_SPAN)
@@ -340,7 +347,6 @@ fun PlayerGestureLayer(
                             }
                             GestureKind.Brightness -> {
                                 val sens = sensState.value.coerceIn(0.25f, 3f)
-                                // Full-height swipe covers 0..200% (span = 2.0).
                                 val next = (
                                     startBrit - (total.y / size.height) * sens * BRIGHTNESS_SPAN
                                     ).coerceIn(BrightnessStore.MIN, BrightnessStore.MAX)
@@ -356,8 +362,7 @@ fun PlayerGestureLayer(
                         seekState.value(previewMs)
                     }
                     if (classified == GestureKind.Dismiss) {
-                        val threshold = size.height * 0.18f
-                        if (total.y >= threshold) {
+                        if (dismissShouldClose(total.y, total.x, size.height.toFloat())) {
                             runCatching { swipeDownCb.value?.invoke() }
                         }
                     }
@@ -366,16 +371,16 @@ fun PlayerGestureLayer(
             },
     ) {
         when (kind) {
-            GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs, totalMs = durationMs)
+            GestureKind.Seek -> SeekHud(previewMs = previewMs, fromMs = positionMs)
             GestureKind.Dismiss -> DismissHud()
             GestureKind.Volume -> SideHud(
-                icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
+                icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White, modifier = Modifier.size(22.dp)) },
                 displayPercent = (barFraction * 100).toInt().coerceIn(0, 200),
                 barFill = (barFraction / VOLUME_SPAN).coerceIn(0f, 1f),
                 alignment = if (invertGestureSides) Alignment.CenterStart else Alignment.CenterEnd,
             )
             GestureKind.Brightness -> SideHud(
-                icon = { Icon(Icons.Rounded.BrightnessHigh, null, tint = Color.White) },
+                icon = { Icon(Icons.Rounded.BrightnessHigh, null, tint = Color.White, modifier = Modifier.size(22.dp)) },
                 displayPercent = (barFraction * 100).toInt().coerceIn(1, 200),
                 barFill = (barFraction / BRIGHTNESS_SPAN).coerceIn(0f, 1f),
                 alignment = if (invertGestureSides) Alignment.CenterEnd else Alignment.CenterStart,
@@ -397,9 +402,9 @@ fun PlayerGestureLayer(
 private fun DismissHud() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         RowHud {
-            Text("↓", style = MaterialTheme.typography.titleLarge, color = ForgeAccent)
-            Spacer(Modifier.height(4.dp))
-            Text("Close", style = MaterialTheme.typography.labelLarge, color = Color.White)
+            Text("↓", style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.9f))
+            Spacer(Modifier.height(2.dp))
+            Text("Close", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f))
         }
     }
 }
@@ -408,9 +413,9 @@ private fun DismissHud() {
 private fun HoldSpeedHud(label: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         RowHud {
-            Icon(Icons.Rounded.Speed, null, tint = ForgeAccent)
-            Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Icon(Icons.Rounded.Speed, null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(2.dp))
+            Text(label, style = MaterialTheme.typography.titleSmall, color = Color.White)
         }
     }
 }
@@ -419,10 +424,10 @@ private fun HoldSpeedHud(label: String) {
 private fun RowHud(content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
-            .padding(top = 72.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.55f))
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(top = 64.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         content()
@@ -437,66 +442,63 @@ private fun DoubleTapHud(back: Boolean, seconds: Int) {
     ) {
         Column(
             modifier = Modifier
-                .padding(horizontal = 36.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.55f))
-                .padding(horizontal = 18.dp, vertical = 12.dp),
+                .padding(horizontal = 28.dp)
+                .clip(RoundedCornerShape(40.dp))
+                .background(Color.Black.copy(alpha = 0.45f))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
                 imageVector = if (back) Icons.Rounded.FastRewind else Icons.Rounded.FastForward,
                 contentDescription = null,
-                tint = ForgeAccent,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
                 text = if (back) "−${seconds}s" else "+${seconds}s",
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 color = Color.White,
             )
         }
     }
 }
 
+/** VLC-like seek overlay: icon + time + delta (no noisy total). */
 @Composable
-private fun SeekHud(previewMs: Long, fromMs: Long, totalMs: Long = 0L) {
+private fun SeekHud(previewMs: Long, fromMs: Long) {
     val delta = previewMs - fromMs
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.Black.copy(alpha = 0.78f))
-                .padding(horizontal = 28.dp, vertical = 16.dp),
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = 0.70f))
+                .padding(horizontal = 22.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
                 imageVector = if (delta >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
                 contentDescription = null,
-                tint = ForgeAccent,
+                tint = Color.White,
+                modifier = Modifier.size(26.dp),
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = formatDuration(previewMs),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = Color.White,
             )
-            if (totalMs > 0L) {
-                Text(
-                    text = formatDuration(totalMs),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                )
-            }
             Text(
                 text = (if (delta >= 0) "+" else "−") + formatDuration(abs(delta)),
                 style = MaterialTheme.typography.labelLarge,
-                color = ForgeAccent,
+                color = Color.White.copy(alpha = 0.78f),
             )
         }
     }
 }
 
+/** VLC-like side HUD: icon + thin bar + percent. */
 @Composable
 private fun SideHud(
     icon: @Composable () -> Unit,
@@ -504,37 +506,85 @@ private fun SideHud(
     barFill: Float,
     alignment: Alignment,
 ) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = alignment) {
+    Box(Modifier.fillMaxSize().padding(horizontal = 18.dp), contentAlignment = alignment) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.55f))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.58f))
+                .padding(horizontal = 10.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             icon()
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Box(
                 modifier = Modifier
-                    .width(6.dp)
-                    .height(88.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ForgeGraphite),
+                    .width(4.dp)
+                    .height(96.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 Box(
                     modifier = Modifier
-                        .width(6.dp)
+                        .width(4.dp)
                         .fillMaxHeight(barFill.coerceIn(0f, 1f))
-                        .background(ForgeAccent),
+                        .background(Color.White),
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = "$displayPercent%",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
                 color = Color.White,
             )
         }
+    }
+}
+
+/** VLC-like swipe classification. Horizontal wins; edges need a vertical lock; dismiss is center-only. */
+internal fun classifySwipeGesture(
+    dx: Float,
+    dy: Float,
+    startX: Float,
+    startY: Float,
+    width: Float,
+    height: Float,
+    slop: Float,
+    invertSides: Boolean,
+    swipeDownEnabled: Boolean,
+): GestureKind? {
+    val ax = abs(dx)
+    val ay = abs(dy)
+    if (ax <= slop && ay <= slop) return null
+    val leftEdge = width * EDGE_FRACTION
+    val rightEdge = width * (1f - EDGE_FRACTION)
+    return when {
+        ax >= ay -> GestureKind.Seek
+        startX <= leftEdge && ay > ax * EDGE_VERTICAL_RATIO ->
+            if (invertSides) GestureKind.Volume else GestureKind.Brightness
+        startX >= rightEdge && ay > ax * EDGE_VERTICAL_RATIO ->
+            if (invertSides) GestureKind.Brightness else GestureKind.Volume
+        swipeDownEnabled &&
+            startX in leftEdge..rightEdge &&
+            startY < height * 0.55f &&
+            dy > slop &&
+            ay > ax * DISMISS_VERTICAL_RATIO -> GestureKind.Dismiss
+        else -> null
+    }
+}
+
+internal fun dismissShouldClose(totalY: Float, totalX: Float, height: Float): Boolean {
+    return totalY >= height * DISMISS_HEIGHT_FRACTION &&
+        abs(totalY) > abs(totalX) * DISMISS_VERTICAL_RATIO
+}
+
+/** true = back/left, false = forward/right, null = center (chrome / lock). */
+internal fun doubleTapSeekBack(x: Float, width: Float): Boolean? {
+    val zone = width * DOUBLE_TAP_ZONE
+    return when {
+        x < zone -> true
+        x > width - zone -> false
+        else -> null
     }
 }

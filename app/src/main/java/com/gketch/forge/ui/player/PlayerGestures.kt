@@ -84,6 +84,11 @@ fun PlayerGestureLayer(
     excludeTopPx: Float = 0f,
     excludeBottomPx: Float = 0f,
     sensitivityMultiplier: Float = 1f,
+    /** When false, brightness / volume / seek swipes are disabled (tap/hold/pinch still work). */
+    swipeGesturesEnabled: Boolean = true,
+    /** Swap left/right: brightness ↔ volume. */
+    invertGestureSides: Boolean = false,
+    holdSpeedLabel: String = "2×",
     modifier: Modifier = Modifier,
 ) {
     val durationState = rememberUpdatedState(durationMs)
@@ -121,6 +126,9 @@ fun PlayerGestureLayer(
 
     val enabledState = rememberUpdatedState(gesturesEnabled)
     val sensState = rememberUpdatedState(sensitivityMultiplier)
+    val swipeState = rememberUpdatedState(swipeGesturesEnabled)
+    val invertState = rememberUpdatedState(invertGestureSides)
+    val holdLabelState = rememberUpdatedState(holdSpeedLabel)
 
     fun inChrome(y: Float, height: Float): Boolean {
         val top = topExclude.value
@@ -237,8 +245,16 @@ fun PlayerGestureLayer(
                     }
                 }
             }
-            .pointerInput(gesturesEnabled, controlsVisible, excludeTopPx, excludeBottomPx, sensitivityMultiplier) {
-                if (!gesturesEnabled) return@pointerInput
+            .pointerInput(
+                gesturesEnabled,
+                controlsVisible,
+                excludeTopPx,
+                excludeBottomPx,
+                sensitivityMultiplier,
+                swipeGesturesEnabled,
+                invertGestureSides,
+            ) {
+                if (!gesturesEnabled || !swipeState.value) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = true)
                     val start = down.position
@@ -258,6 +274,7 @@ fun PlayerGestureLayer(
                     val slop = 24f
                     val leftEdge = size.width * EDGE_FRACTION
                     val rightEdge = size.width * (1f - EDGE_FRACTION)
+                    val invert = invertState.value
 
                     drag(down.id) { change ->
                         val delta = change.positionChange()
@@ -267,8 +284,8 @@ fun PlayerGestureLayer(
                                 abs(total.x) >= abs(total.y) -> {
                                     if (start.x in leftEdge..rightEdge) GestureKind.Seek else null
                                 }
-                                start.x <= leftEdge -> GestureKind.Brightness
-                                start.x >= rightEdge -> GestureKind.Volume
+                                start.x <= leftEdge -> if (invert) GestureKind.Volume else GestureKind.Brightness
+                                start.x >= rightEdge -> if (invert) GestureKind.Brightness else GestureKind.Volume
                                 else -> null
                             }
                             startVol = volumeState.value().coerceIn(0f, VOLUME_SPAN)
@@ -323,13 +340,13 @@ fun PlayerGestureLayer(
                 icon = { Icon(Icons.AutoMirrored.Rounded.VolumeUp, null, tint = Color.White) },
                 displayPercent = (barFraction * 100).toInt().coerceIn(0, 200),
                 barFill = (barFraction / VOLUME_SPAN).coerceIn(0f, 1f),
-                alignment = Alignment.CenterEnd,
+                alignment = if (invertGestureSides) Alignment.CenterStart else Alignment.CenterEnd,
             )
             GestureKind.Brightness -> SideHud(
                 icon = { Icon(Icons.Rounded.BrightnessHigh, null, tint = Color.White) },
                 displayPercent = (barFraction * 100).toInt().coerceIn(1, 200),
                 barFill = (barFraction / BRIGHTNESS_SPAN).coerceIn(0f, 1f),
-                alignment = Alignment.CenterStart,
+                alignment = if (invertGestureSides) Alignment.CenterEnd else Alignment.CenterStart,
             )
             null -> Unit
         }
@@ -339,18 +356,18 @@ fun PlayerGestureLayer(
             null -> Unit
         }
         if (holdSpeedActive) {
-            HoldSpeedHud()
+            HoldSpeedHud(label = holdLabelState.value)
         }
     }
 }
 
 @Composable
-private fun HoldSpeedHud() {
+private fun HoldSpeedHud(label: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         RowHud {
             Icon(Icons.Rounded.Speed, null, tint = ForgeAccent)
             Spacer(Modifier.height(4.dp))
-            Text("2×", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(label, style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
     }
 }

@@ -153,4 +153,12 @@
     <string name="pause_on_headset_sub">वायर्ड हेडफ़ोन या ब्लूटूथ डिस्कनेक्ट होने पर पॉज़ करें</string>
     <string name="recently_added">हाल ही में जोड़े गए</string>
     <string name="auto_sidecar_subs">ऑटो साइडकार उपशीर्षक</string>
+    <string name="hold_to_speed">होल्ड-टू-स्पीड</string>
+    <string name="hold_to_speed_sub">प्लेयर सतह दबाए रखने पर प्लेबैक गति</string>
+    <string name="player_gestures">चमक / वॉल्यूम / सीक जेस्चर</string>
+    <string name="player_gestures_sub">चमक, वॉल्यूम और सीक स्वाइप (टैप, होल्ड, पिंच चालू रहेंगे)</string>
+    <string name="invert_gesture_sides">चमक / वॉल्यूम पक्ष पलटें</string>
+    <string name="invert_gesture_sides_sub">बाएँ और दाएँ किनारे नियंत्रण बदलें</string>
+    <string name="show_remaining_time">शेष समय दिखाएँ</string>
+    <string name="subtitle_outline">उपशीर्षक आउटलाइन</string>
 </resources>

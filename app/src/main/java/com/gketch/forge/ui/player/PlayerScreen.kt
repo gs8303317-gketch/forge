@@ -177,6 +177,8 @@ import com.gketch.forge.data.ResumeBehavior
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SidecarSubtitles
 import com.gketch.forge.data.TrackPrefsStore
+import com.gketch.forge.data.MediaPlaybackPrefsStore
+import com.gketch.forge.data.SubtitleOutline
 import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.playback.ForgeAudioFx
 import com.gketch.forge.playback.ForgeBalance
@@ -247,6 +249,7 @@ fun PlayerScreen(
     val watchedStore = remember { WatchedStore(context) }
     val appSettingsStore = remember { AppSettingsStore(context) }
     val trackPrefsStore = remember { TrackPrefsStore(context) }
+    val mediaPlaybackPrefsStore = remember { MediaPlaybackPrefsStore(context) }
     val controller = rememberPlayerController()
 
     var playQueue by remember { mutableStateOf(queue) }
@@ -257,6 +260,7 @@ fun PlayerScreen(
     var pendingResumeUri by remember { mutableStateOf<String?>(null) }
     var savedSpeed by remember { mutableFloatStateOf(1f) }
     var holdBoosting by remember { mutableStateOf(false) }
+    var uriSpeedLocked by remember { mutableStateOf(false) }
 
     var isPlaying by remember { mutableStateOf(true) }
     var playerError by remember { mutableStateOf<String?>(null) }
@@ -286,6 +290,7 @@ fun PlayerScreen(
     var subtitleColor by remember { mutableStateOf(SubtitleColor.WHITE) }
     var subtitleBackground by remember { mutableStateOf(SubtitleBackground.SEMI) }
     var subtitlePosition by remember { mutableStateOf(SubtitlePosition.BOTTOM) }
+    var subtitleOutline by remember { mutableStateOf(SubtitleOutline.OUTLINE) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var externalSubtitleUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var tracksRestoredUri by remember { mutableStateOf<String?>(null) }
@@ -377,13 +382,16 @@ fun PlayerScreen(
             subtitleColor = s.subtitleColor
             subtitleBackground = s.subtitleBackground
             subtitlePosition = s.subtitlePosition
+            subtitleOutline = s.subtitleOutline
             ForgeEngine.setPauseAtEndOfMediaItems(!s.autoplayNext)
             ForgeCrossfade.setDurationSec(s.crossfade.seconds)
             ForgeLoudness.setNormalizeEnabled(s.loudnessNormalize)
             if (!appliedDefaultSpeed) {
                 appliedDefaultSpeed = true
-                speed = s.defaultPlaybackSpeed
-                savedSpeed = s.defaultPlaybackSpeed
+                if (!uriSpeedLocked) {
+                    speed = s.defaultPlaybackSpeed
+                    savedSpeed = s.defaultPlaybackSpeed
+                }
             }
         }
     }
@@ -525,8 +533,24 @@ fun PlayerScreen(
                     seriesPrompt = null
                     if (uri != null) {
                         scope.launch {
-                            surfaceBrightness = brightnessStore.get(uri) ?: BrightnessStore.DEFAULT
-                            applySurfaceBrightness(surfaceBrightness, playerViewRef)
+                            runCatching {
+                                surfaceBrightness = brightnessStore.get(uri) ?: BrightnessStore.DEFAULT
+                                applySurfaceBrightness(surfaceBrightness, playerViewRef)
+                            }
+                            runCatching {
+                                val prefs = mediaPlaybackPrefsStore.get(uri)
+                                prefs.speed?.let { spd ->
+                                    uriSpeedLocked = true
+                                    if (!holdBoosting) {
+                                        speed = spd
+                                        savedSpeed = spd
+                                        player.setPlaybackSpeed(spd)
+                                    }
+                                }
+                                prefs.aspect?.let { name ->
+                                    AspectMode.entries.find { it.name == name }?.let { aspect = it }
+                                }
+                            }
                         }
                     } else {
                         surfaceBrightness = BrightnessStore.DEFAULT
@@ -727,6 +751,18 @@ fun PlayerScreen(
             playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
             if (startUri != null) {
                 runCatching { surfaceBrightness = brightnessStore.get(startUri) ?: BrightnessStore.DEFAULT }
+                runCatching {
+                    val prefs = mediaPlaybackPrefsStore.get(startUri)
+                    prefs.speed?.let { spd ->
+                        uriSpeedLocked = true
+                        speed = spd
+                        savedSpeed = spd
+                        player.setPlaybackSpeed(spd)
+                    }
+                    prefs.aspect?.let { name ->
+                        AspectMode.entries.find { it.name == name }?.let { aspect = it }
+                    }
+                }
             }
             return@LaunchedEffect
         }
@@ -811,6 +847,21 @@ fun PlayerScreen(
         playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
         if (startUri2 != null) {
             runCatching { surfaceBrightness = brightnessStore.get(startUri2) ?: BrightnessStore.DEFAULT }
+            runCatching {
+                val prefsUri = startUri2
+                if (prefsUri != null) {
+                    val prefs = mediaPlaybackPrefsStore.get(prefsUri)
+                    prefs.speed?.let { spd ->
+                        uriSpeedLocked = true
+                        speed = spd
+                        savedSpeed = spd
+                        player.setPlaybackSpeed(spd)
+                    }
+                    prefs.aspect?.let { name ->
+                        AspectMode.entries.find { it.name == name }?.let { aspect = it }
+                    }
+                }
+            }
         }
     }
 
@@ -1033,7 +1084,7 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(subtitleSizeSp, subtitleColor, subtitleBackground, subtitlePosition, playerViewRef, subtitlesEnabled) {
+    LaunchedEffect(subtitleSizeSp, subtitleColor, subtitleBackground, subtitlePosition, subtitleOutline, playerViewRef, subtitlesEnabled) {
         playerViewRef?.subtitleView?.apply {
             setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
             val bg = when (subtitleBackground) {
@@ -1041,12 +1092,17 @@ fun PlayerScreen(
                 SubtitleBackground.SEMI -> android.graphics.Color.argb(140, 0, 0, 0)
                 SubtitleBackground.BLACK -> android.graphics.Color.BLACK
             }
+            val edgeType = when (subtitleOutline) {
+                SubtitleOutline.OUTLINE -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+                SubtitleOutline.STRONG -> CaptionStyleCompat.EDGE_TYPE_RAISED
+                SubtitleOutline.SHADOW -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+            }
             setStyle(
                 CaptionStyleCompat(
                     subtitleColor.argb,
                     bg,
                     android.graphics.Color.TRANSPARENT,
-                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    edgeType,
                     android.graphics.Color.BLACK,
                     null,
                 ),
@@ -1258,7 +1314,7 @@ fun PlayerScreen(
                             if (holdBoosting) return@PlayerGestureLayer
                             savedSpeed = speed
                             holdBoosting = true
-                            val boost = if (savedSpeed < 1.5f) 2.0f else maxOf(savedSpeed, 2.0f)
+                            val boost = appSettings.holdToSpeed.speed
                             speed = boost
                             controller.setPlaybackSpeed(boost)
                         },
@@ -1289,6 +1345,9 @@ fun PlayerScreen(
                         excludeTopPx = excludeTopPx,
                         excludeBottomPx = excludeBottomPx,
                         sensitivityMultiplier = appSettings.gestureSensitivity.multiplier,
+                        swipeGesturesEnabled = appSettings.playerGesturesEnabled,
+                        invertGestureSides = appSettings.invertGestureSides,
+                        holdSpeedLabel = appSettings.holdToSpeed.label,
                     )
                 }
 
@@ -1309,10 +1368,30 @@ fun PlayerScreen(
                     ) {
                         displayedCues.forEach { cue ->
                             val cueText = cue.text?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
+                            val shadow = when (subtitleOutline) {
+                                SubtitleOutline.OUTLINE -> androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black,
+                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                    blurRadius = 2f,
+                                )
+                                SubtitleOutline.STRONG -> androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black,
+                                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                    blurRadius = 4f,
+                                )
+                                SubtitleOutline.SHADOW -> androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.85f),
+                                    offset = androidx.compose.ui.geometry.Offset(3f, 3f),
+                                    blurRadius = 6f,
+                                )
+                            }
                             Text(
                                 text = cueText,
                                 color = Color(subtitleColor.argb),
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = subtitleSizeSp.sp),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = subtitleSizeSp.sp,
+                                    shadow = shadow,
+                                ),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(bg)
@@ -1624,7 +1703,11 @@ fun PlayerScreen(
                 selected = speed,
                 onChange = { next ->
                     speed = next.coerceIn(0.25f, 3f)
+                    savedSpeed = speed
                     controller?.setPlaybackSpeed(speed)
+                    current?.uri?.toString()?.let { u ->
+                        scope.launch { runCatching { mediaPlaybackPrefsStore.saveSpeed(u, speed) } }
+                    }
                     controlsHideToken++
                 },
                 onDone = { panel = Panel.None },
@@ -1747,6 +1830,9 @@ fun PlayerScreen(
                         selected = aspect == mode,
                         onClick = {
                             aspect = mode
+                            current?.uri?.toString()?.let { u ->
+                                scope.launch { runCatching { mediaPlaybackPrefsStore.saveAspect(u, mode.name) } }
+                            }
                             panel = Panel.None
                         },
                         label = { Text(mode.label) },
@@ -1853,9 +1939,18 @@ fun PlayerScreen(
                     controlsHideToken++
                 },
                 onInteract = { controlsHideToken++ },
+                showRemainingTime = appSettings.showRemainingTime,
+                onToggleRemainingTime = {
+                    val next = !appSettings.showRemainingTime
+                    scope.launch { appSettingsStore.setShowRemainingTime(next) }
+                    controlsHideToken++
+                },
                 onCycleAspect = {
                     val modes = AspectMode.entries
                     aspect = modes[(aspect.ordinal + 1) % modes.size]
+                    current?.uri?.toString()?.let { u ->
+                        scope.launch { runCatching { mediaPlaybackPrefsStore.saveAspect(u, aspect.name) } }
+                    }
                     Toast.makeText(context, aspect.label, Toast.LENGTH_SHORT).show()
                     controlsHideToken++
                 },
@@ -2115,6 +2210,7 @@ fun PlayerScreen(
                 color = subtitleColor,
                 background = subtitleBackground,
                 position = subtitlePosition,
+                outline = subtitleOutline,
                 hasExternal = externalSubtitleUri != null,
                 delayMs = subtitleDelayMs,
                 onDismiss = { panel = Panel.None },
@@ -2147,6 +2243,10 @@ fun PlayerScreen(
                 onPosition = {
                     subtitlePosition = it
                     scope.launch { appSettingsStore.setSubtitlePosition(it) }
+                },
+                onOutline = {
+                    subtitleOutline = it
+                    scope.launch { appSettingsStore.setSubtitleOutline(it) }
                 },
                 onDelay = { panel = Panel.SubDelay },
                 onPickExternal = {
@@ -2868,6 +2968,8 @@ private fun PlayerControls(
     onQueue: () -> Unit = {},
     onChapterPrev: () -> Unit = {},
     onChapterNext: () -> Unit = {},
+    showRemainingTime: Boolean = false,
+    onToggleRemainingTime: () -> Unit = {},
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onPrev: () -> Unit,
@@ -2919,12 +3021,24 @@ private fun PlayerControls(
                 ),
             )
         }
+        val displayPos = if (scrubbing) (scrubValue * durationMs).toLong() else positionMs
+        val remainingMs = (durationMs - displayPos).coerceAtLeast(0L)
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .clickable {
+                    onToggleRemainingTime()
+                    onInteract()
+                },
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = formatDuration(if (scrubbing) (scrubValue * durationMs).toLong() else positionMs),
+                text = if (showRemainingTime) {
+                    "−${formatDuration(remainingMs)}"
+                } else {
+                    formatDuration(displayPos)
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = ForgeMuted,
             )
@@ -3114,6 +3228,7 @@ private fun SubtitleDialog(
     color: SubtitleColor,
     background: SubtitleBackground,
     position: SubtitlePosition,
+    outline: SubtitleOutline,
     hasExternal: Boolean,
     delayMs: Int,
     onDismiss: () -> Unit,
@@ -3123,6 +3238,7 @@ private fun SubtitleDialog(
     onColor: (SubtitleColor) -> Unit,
     onBackground: (SubtitleBackground) -> Unit,
     onPosition: (SubtitlePosition) -> Unit,
+    onOutline: (SubtitleOutline) -> Unit,
     onDelay: () -> Unit,
     onPickExternal: () -> Unit,
     onClearExternal: () -> Unit,
@@ -3211,6 +3327,21 @@ private fun SubtitleDialog(
                             selected = background == b,
                             onClick = { onBackground(b) },
                             label = { Text(b.label) },
+                            colors = chipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Outline", color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    SubtitleOutline.entries.forEach { o ->
+                        FilterChip(
+                            selected = outline == o,
+                            onClick = { onOutline(o) },
+                            label = { Text(o.label) },
                             colors = chipColors(),
                         )
                     }

@@ -96,6 +96,19 @@ enum class SkipIntroSeconds(val label: String, val seconds: Int) {
     SEC_90("90s", 90),
 }
 
+enum class HoldToSpeed(val label: String, val speed: Float) {
+    X1_5("1.5×", 1.5f),
+    X2("2×", 2.0f),
+    X2_5("2.5×", 2.5f),
+    X3("3×", 3.0f),
+}
+
+enum class SubtitleOutline(val label: String) {
+    OUTLINE("Outline"),
+    STRONG("Strong"),
+    SHADOW("Shadow"),
+}
+
 enum class ChromeHideDelay(val label: String, val delayMs: Long?) {
     SEC_3("3s", 3_000L),
     SEC_5_5("5.5s", 5_500L),
@@ -132,6 +145,11 @@ data class AppSettings(
     val seriesAutoNext: Boolean = false,
     val skipIntroSeconds: SkipIntroSeconds = SkipIntroSeconds.OFF,
     val pauseOnHeadsetUnplug: Boolean = true,
+    val showRemainingTime: Boolean = false,
+    val holdToSpeed: HoldToSpeed = HoldToSpeed.X2,
+    val playerGesturesEnabled: Boolean = true,
+    val invertGestureSides: Boolean = false,
+    val subtitleOutline: SubtitleOutline = SubtitleOutline.OUTLINE,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -161,6 +179,11 @@ data class AppSettings(
         .put("seriesAutoNext", seriesAutoNext)
         .put("skipIntroSeconds", skipIntroSeconds.name)
         .put("pauseOnHeadsetUnplug", pauseOnHeadsetUnplug)
+        .put("showRemainingTime", showRemainingTime)
+        .put("holdToSpeed", holdToSpeed.name)
+        .put("playerGesturesEnabled", playerGesturesEnabled)
+        .put("invertGestureSides", invertGestureSides)
+        .put("subtitleOutline", subtitleOutline.name)
 }
 
 class AppSettingsStore(context: Context) {
@@ -242,6 +265,15 @@ class AppSettingsStore(context: Context) {
                 SkipIntroSeconds.valueOf(p[KEY_SKIP_INTRO] ?: SkipIntroSeconds.OFF.name)
             }.getOrDefault(SkipIntroSeconds.OFF),
             pauseOnHeadsetUnplug = p[KEY_PAUSE_HEADSET] ?: true,
+            showRemainingTime = p[KEY_SHOW_REMAINING] ?: false,
+            holdToSpeed = runCatching {
+                HoldToSpeed.valueOf(p[KEY_HOLD_SPEED] ?: HoldToSpeed.X2.name)
+            }.getOrDefault(HoldToSpeed.X2),
+            playerGesturesEnabled = p[KEY_PLAYER_GESTURES] ?: true,
+            invertGestureSides = p[KEY_INVERT_GESTURE] ?: false,
+            subtitleOutline = runCatching {
+                SubtitleOutline.valueOf(p[KEY_SUB_OUTLINE] ?: SubtitleOutline.OUTLINE.name)
+            }.getOrDefault(SubtitleOutline.OUTLINE),
         )
     }
 
@@ -366,6 +398,26 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_PAUSE_HEADSET] = value }
     }
 
+    suspend fun setShowRemainingTime(value: Boolean) {
+        store.edit { it[KEY_SHOW_REMAINING] = value }
+    }
+
+    suspend fun setHoldToSpeed(value: HoldToSpeed) {
+        store.edit { it[KEY_HOLD_SPEED] = value.name }
+    }
+
+    suspend fun setPlayerGesturesEnabled(value: Boolean) {
+        store.edit { it[KEY_PLAYER_GESTURES] = value }
+    }
+
+    suspend fun setInvertGestureSides(value: Boolean) {
+        store.edit { it[KEY_INVERT_GESTURE] = value }
+    }
+
+    suspend fun setSubtitleOutline(value: SubtitleOutline) {
+        store.edit { it[KEY_SUB_OUTLINE] = value.name }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -403,6 +455,11 @@ class AppSettingsStore(context: Context) {
             if (o.has("seriesAutoNext")) p[KEY_SERIES_AUTO_NEXT] = o.optBoolean("seriesAutoNext", false)
             if (o.has("skipIntroSeconds")) p[KEY_SKIP_INTRO] = o.optString("skipIntroSeconds", SkipIntroSeconds.OFF.name)
             if (o.has("pauseOnHeadsetUnplug")) p[KEY_PAUSE_HEADSET] = o.optBoolean("pauseOnHeadsetUnplug", true)
+            if (o.has("showRemainingTime")) p[KEY_SHOW_REMAINING] = o.optBoolean("showRemainingTime", false)
+            if (o.has("holdToSpeed")) p[KEY_HOLD_SPEED] = o.optString("holdToSpeed", HoldToSpeed.X2.name)
+            if (o.has("playerGesturesEnabled")) p[KEY_PLAYER_GESTURES] = o.optBoolean("playerGesturesEnabled", true)
+            if (o.has("invertGestureSides")) p[KEY_INVERT_GESTURE] = o.optBoolean("invertGestureSides", false)
+            if (o.has("subtitleOutline")) p[KEY_SUB_OUTLINE] = o.optString("subtitleOutline", SubtitleOutline.OUTLINE.name)
         }
     }
 
@@ -435,6 +492,11 @@ class AppSettingsStore(context: Context) {
         private val KEY_SERIES_AUTO_NEXT = booleanPreferencesKey("series_auto_next")
         private val KEY_SKIP_INTRO = stringPreferencesKey("skip_intro_seconds")
         private val KEY_PAUSE_HEADSET = booleanPreferencesKey("pause_on_headset_unplug")
+        private val KEY_SHOW_REMAINING = booleanPreferencesKey("show_remaining_time")
+        private val KEY_HOLD_SPEED = stringPreferencesKey("hold_to_speed")
+        private val KEY_PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
+        private val KEY_INVERT_GESTURE = booleanPreferencesKey("invert_gesture_sides")
+        private val KEY_SUB_OUTLINE = stringPreferencesKey("subtitle_outline")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

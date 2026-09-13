@@ -68,6 +68,7 @@ import com.gketch.forge.data.HiddenFoldersStore
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeBehavior
 import com.gketch.forge.data.SkipIntroSeconds
+import com.gketch.forge.data.HoldToSpeed
 import com.gketch.forge.data.ResumeStore
 import com.gketch.forge.data.SafFolder
 import com.gketch.forge.data.SafFoldersStore
@@ -328,6 +329,42 @@ fun SettingsScreen(onBack: () -> Unit) {
                     "Brightness, volume, and seek swipe strength",
                     color = ForgeMuted,
                     style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(stringResource(R.string.hold_to_speed), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    HoldToSpeed.entries.forEach { opt ->
+                        FilterChip(
+                            selected = app.holdToSpeed == opt,
+                            onClick = { scope.launch { appStore.setHoldToSpeed(opt) } },
+                            label = { Text(opt.label) },
+                            colors = engineChipColors(),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.hold_to_speed_sub),
+                    color = ForgeMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.player_gestures),
+                    subtitle = stringResource(R.string.player_gestures_sub),
+                    checked = app.playerGesturesEnabled,
+                    onChecked = { scope.launch { appStore.setPlayerGesturesEnabled(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.invert_gesture_sides),
+                    subtitle = stringResource(R.string.invert_gesture_sides_sub),
+                    checked = app.invertGestureSides,
+                    onChecked = { scope.launch { appStore.setInvertGestureSides(it) } },
                 )
                 Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.chrome_hide_delay), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
@@ -797,7 +834,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "1.22.0 · volume boost gesture · skip intro · end card · library rescan · share snapshot",
+                    text = "1.24.0 · remaining time · per-URI speed/aspect · hold speed · gesture controls · subtitle outline",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ForgeMuted,
                 )

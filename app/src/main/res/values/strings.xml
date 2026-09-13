@@ -156,4 +156,12 @@
     <string name="pause_on_headset_sub">Pause when wired headphones or Bluetooth disconnect (AUDIO_BECOMING_NOISY)</string>
     <string name="recently_added">Recently added</string>
     <string name="auto_sidecar_subs">Auto sidecar subtitles</string>
+    <string name="hold_to_speed">Hold-to-speed</string>
+    <string name="hold_to_speed_sub">Playback speed while holding the player surface</string>
+    <string name="player_gestures">Brightness / volume / seek gestures</string>
+    <string name="player_gestures_sub">Swipe gestures for brightness, volume, and seek (tap, hold, and pinch stay on)</string>
+    <string name="invert_gesture_sides">Invert brightness / volume sides</string>
+    <string name="invert_gesture_sides_sub">Swap left and right edge controls</string>
+    <string name="show_remaining_time">Show remaining time</string>
+    <string name="subtitle_outline">Subtitle outline</string>
 </resources>

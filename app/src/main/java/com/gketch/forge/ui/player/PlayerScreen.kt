@@ -242,6 +242,8 @@ fun PlayerScreen(
     var scrubbing by remember { mutableStateOf(false) }
     var scrubFromSlider by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
+    var scrubSettling by remember { mutableStateOf(false) }
+    var settleTargetMs by remember { mutableLongStateOf(-1L) }
     var surfaceBrightness by remember { mutableFloatStateOf(BrightnessStore.DEFAULT) }
     var videoZoom by remember { mutableFloatStateOf(1f) }
     var videoPan by remember { mutableStateOf(Offset.Zero) }
@@ -530,6 +532,35 @@ fun PlayerScreen(
                         surfaceBrightness = BrightnessStore.DEFAULT
                         applySurfaceBrightness(surfaceBrightness, playerViewRef)
                     }
+                    val transitionUri = uri
+                    val alreadySidecar = mediaItemHasSidecar(mediaItem)
+                    if (alreadySidecar) {
+                        val scUri = mediaItem?.localConfiguration?.subtitleConfigurations?.firstOrNull()?.uri
+                        if (scUri != null) {
+                            externalSubtitleUri = scUri
+                            autoSidecarForUri = transitionUri
+                        }
+                    } else if (transitionUri != null && autoSidecarForUri != transitionUri) {
+                        externalSubtitleUri = null
+                        autoSidecarForUri = null
+                        val q = playQueue
+                        val idx = player.currentMediaItemIndex
+                        scope.launch {
+                            runCatching {
+                                attachSidecarForQueueIndex(
+                                    context = context,
+                                    player = player,
+                                    queue = q,
+                                    index = idx,
+                                    onCurrent = { item, sidecar ->
+                                        externalSubtitleUri = sidecar
+                                        autoSidecarForUri = item.uri.toString()
+                                        subtitlesEnabled = true
+                                    },
+                                )
+                            }
+                        }
+                    }
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                         if (uri != null) {
                             // Load/reopen path may seekTo(index) and apply resume itself — skip duplicate.
@@ -661,6 +692,12 @@ fun PlayerScreen(
         index = startIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
     }
 
+    LaunchedEffect(scrubSettling) {
+        if (!scrubSettling) return@LaunchedEffect
+        delay(700)
+        scrubSettling = false
+    }
+
     LaunchedEffect(controller, playQueue, startIndex, openId) {
         val player = controller ?: return@LaunchedEffect
         val key = playQueue.joinToString("|") { it.uri.toString() } + "#$startIndex#$openId"
@@ -764,30 +801,10 @@ fun PlayerScreen(
         errorRetryCount = 0
         errorRetrying = false
 
-        val items = withContext(Dispatchers.IO) {
-            playQueue.mapNotNull { item ->
-                val uri = item.uri
-                if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) return@mapNotNull null
-                val sidecar = runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
-                buildPlayerMediaItem(item, sidecar)
-            }
-        }
-        // Reflect auto-loaded sidecar on the start item for subtitle UI state.
-        runCatching {
-            val startItem = playQueue.getOrNull(safeStart)
-            if (startItem != null) {
-                val sc = withContext(Dispatchers.IO) {
-                    SidecarSubtitles.find(context, startItem)
-                }
-                if (sc != null) {
-                    externalSubtitleUri = sc
-                    autoSidecarForUri = startItem.uri.toString()
-                    subtitlesEnabled = true
-                } else {
-                    autoSidecarForUri = null
-                }
-            }
-        }
+        // Instant queue — sidecar scan is optional and must not delay first frame.
+        val items = buildQueueMediaItems(playQueue)
+        externalSubtitleUri = null
+        autoSidecarForUri = null
         if (items.isEmpty()) {
             playerError = "Invalid media URI"
             return@LaunchedEffect
@@ -832,6 +849,23 @@ fun PlayerScreen(
         } catch (t: Throwable) {
             playerError = t.message ?: "Could not start playback"
             return@LaunchedEffect
+        }
+        val attachQueue = playQueue
+        val attachStart = safeStart
+        scope.launch {
+            runCatching {
+                attachSidecarsInBackground(
+                    context = context,
+                    player = player,
+                    queue = attachQueue,
+                    startIndex = attachStart,
+                    onCurrentSidecar = { item, sidecar ->
+                        externalSubtitleUri = sidecar
+                        autoSidecarForUri = item.uri.toString()
+                        subtitlesEnabled = true
+                    },
+                )
+            }
         }
         playQueue.getOrNull(safeStart)?.let { recentStore.record(it) }
         if (startUri2 != null) {
@@ -880,6 +914,11 @@ fun PlayerScreen(
                 val isBuf = state == Player.STATE_BUFFERING
                 // Always update isolated progress (controls/scrubber subscribe here).
                 progress.updateProgress(pos, dur, buffered, isBuf, state)
+                if (scrubSettling && settleTargetMs >= 0L && !isBuf &&
+                    abs(pos - settleTargetMs) < 1_200L
+                ) {
+                    scrubSettling = false
+                }
                 // Throttle parent position/duration reads used by dialogs (250ms).
                 tick++
                 if (tick % 3 == 0 || abLoopEnabled) {
@@ -1240,10 +1279,14 @@ fun PlayerScreen(
                         else -> 48.dp.toPx()
                     }
                 }
-                // Slider scrub: large centered timecode (gesture SeekHud covers swipe seek).
-                if (scrubFromSlider && scrubbing && !inPip && isVideoSurface) {
+                // Slider / settle: last good frame + oversized timecode (gesture SeekHud covers swipe).
+                if (!inPip && isVideoSurface && (scrubFromSlider && scrubbing || scrubSettling)) {
                     val dur = progress.durationMs
-                    val pos = if (dur > 0L) (scrubValue * dur).toLong() else 0L
+                    val pos = when {
+                        scrubSettling && settleTargetMs >= 0L -> settleTargetMs
+                        dur > 0L -> (scrubValue * dur).toLong()
+                        else -> 0L
+                    }
                     ScrubTimecodeHud(elapsedMs = pos, totalMs = dur)
                 }
 
@@ -1262,6 +1305,8 @@ fun PlayerScreen(
                                 progress.buffering,
                                 progress.playbackState,
                             )
+                            settleTargetMs = target
+                            scrubSettling = true
                             scrubbing = false
                             scrubFromSlider = false
                         },
@@ -2038,6 +2083,8 @@ fun PlayerScreen(
                     finishVideoScrub(controller, seekTo, scrubHold)
                     positionMs = seekTo
                     progress.updateProgress(seekTo, dur, progress.bufferedMs, progress.buffering, progress.playbackState)
+                    settleTargetMs = seekTo
+                    scrubSettling = true
                     scrubbing = false
                     scrubFromSlider = false
                 },
@@ -2566,16 +2613,26 @@ fun PlayerScreen(
                                         val mutable = playQueue.toMutableList()
                                         mutable.add(next)
                                         playQueue = mutable
-                                        val sidecar = runCatching { SidecarSubtitles.find(context, next) }.getOrNull()
-                                        val media = buildPlayerMediaItem(next, sidecar)
-                                        if (sidecar != null) {
-                                            externalSubtitleUri = sidecar
-                                            autoSidecarForUri = next.uri.toString()
-                                        }
+                                        val media = buildPlayerMediaItem(next, subtitleUri = null)
                                         tracksRestoredUri = null
                                         player.addMediaItem(media)
                                         player.seekToNextMediaItem()
                                         player.play()
+                                        scope.launch {
+                                            runCatching {
+                                                attachSidecarForQueueIndex(
+                                                    context = context,
+                                                    player = player,
+                                                    queue = mutable,
+                                                    index = mutable.lastIndex,
+                                                    onCurrent = { item, sidecar ->
+                                                        externalSubtitleUri = sidecar
+                                                        autoSidecarForUri = item.uri.toString()
+                                                        subtitlesEnabled = true
+                                                    },
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             },

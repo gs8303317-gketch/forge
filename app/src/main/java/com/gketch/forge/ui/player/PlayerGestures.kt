@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.util.fastForEach
 import kotlin.math.sqrt
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gketch.forge.data.BrightnessStore
 import com.gketch.forge.ui.library.formatDuration
@@ -463,9 +464,9 @@ private fun SeekHud(previewMs: Long, fromMs: Long, totalMs: Long = 0L) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.72f))
-                .padding(horizontal = 22.dp, vertical = 14.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.Black.copy(alpha = 0.78f))
+                .padding(horizontal = 28.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
@@ -475,17 +476,21 @@ private fun SeekHud(previewMs: Long, fromMs: Long, totalMs: Long = 0L) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = if (totalMs > 0L) {
-                    "${formatDuration(previewMs)} / ${formatDuration(totalMs)}"
-                } else {
-                    formatDuration(previewMs)
-                },
-                style = MaterialTheme.typography.headlineSmall,
+                text = formatDuration(previewMs),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
+            if (totalMs > 0L) {
+                Text(
+                    text = formatDuration(totalMs),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+            }
             Text(
                 text = (if (delta >= 0) "+" else "−") + formatDuration(abs(delta)),
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = ForgeAccent,
             )
         }

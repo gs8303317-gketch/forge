@@ -25,6 +25,7 @@ import com.gketch.forge.R
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,17 +55,22 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        // Warm prefs snapshot before building the player (decoder/load-control are create-time).
+        // Warm prefs before building the player (decoder/load-control are create-time).
+        // Parallel DataStore reads — do not serialize two cold starts on the main thread.
         runBlocking {
-            runCatching {
-                ForgePlayerPrefsStore(this@PlaybackService).prefs.first()
+            val prefsJob = async(Dispatchers.IO) {
+                runCatching { ForgePlayerPrefsStore(this@PlaybackService).prefs.first() }
             }
-            runCatching {
-                val app = AppSettingsStore(this@PlaybackService).settings.first()
-                ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
-                ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
-                ForgeAudioFocus.behavior = app.audioFocusBehavior
+            val appJob = async(Dispatchers.IO) {
+                runCatching {
+                    val app = AppSettingsStore(this@PlaybackService).settings.first()
+                    ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
+                    ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
+                    ForgeAudioFocus.behavior = app.audioFocusBehavior
+                }
             }
+            prefsJob.await()
+            appJob.await()
         }
 
         val exo = ForgePlayerFactory.create(this, ForgePlayerPrefs.snapshot)

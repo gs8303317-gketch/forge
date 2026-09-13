@@ -119,6 +119,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -200,26 +201,30 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
-/** Undo any leftover 1.18 window dim so chrome stays at system brightness. */
+/** VLC-like oversized timecode while the last decoded frame stays on screen. */
 @Composable
 internal fun ScrubTimecodeHud(elapsedMs: Long, totalMs: Long) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.72f))
-                .padding(horizontal = 24.dp, vertical = 14.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.Black.copy(alpha = 0.78f))
+                .padding(horizontal = 28.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = if (totalMs > 0L) {
-                    "${formatDuration(elapsedMs)} / ${formatDuration(totalMs)}"
-                } else {
-                    formatDuration(elapsedMs)
-                },
-                style = MaterialTheme.typography.headlineSmall,
+                text = formatDuration(elapsedMs),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
+            if (totalMs > 0L) {
+                Text(
+                    text = formatDuration(totalMs),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.72f),
+                )
+            }
         }
     }
 }
@@ -231,14 +236,68 @@ internal class ScrubHold {
     var lastSeekMs: Long = -1L
     var lastSeekAt: Long = 0L
     var pendingMs: Long = -1L
+    var lastSampleMs: Long = -1L
+    var lastSampleAt: Long = 0L
+    var fast: Boolean = false
 }
 
-/** ~120–150ms throttle + keyframe seeks while dragging; EXACT settle on release. */
-internal const val SCRUB_THROTTLE_MS = 130L
+internal data class ScrubPreviewDecision(
+    val shouldSeek: Boolean,
+    val fling: Boolean,
+)
 
-internal const val SCRUB_MIN_DELTA_MS = 350L
+/** Slow-drag keyframe cadence. Fast drag / fling uses a larger gap or settle-only. */
+internal const val SCRUB_THROTTLE_MS = 280L
 
-internal const val SCRUB_FORCE_DELTA_MS = 2_000L
+internal const val SCRUB_FAST_THROTTLE_MS = 520L
+
+internal const val SCRUB_MIN_DELTA_MS = 500L
+
+internal const val SCRUB_FORCE_DELTA_MS = 6_000L
+
+/** Media-ms per wall-ms. ~8× realtime = fling → skip preview, seek on settle. */
+internal const val SCRUB_FLING_MEDIA_PER_WALL = 8.0
+
+internal const val SCRUB_FAST_MEDIA_PER_WALL = 3.0
+
+internal fun decidePreviewSeek(
+    targetMs: Long,
+    hold: ScrubHold,
+    nowElapsedRealtime: Long,
+): ScrubPreviewDecision {
+    val clamped = targetMs.coerceAtLeast(0L)
+    hold.pendingMs = clamped
+
+    var fling = false
+    val sampleMs = hold.lastSampleMs
+    val sampleAt = hold.lastSampleAt
+    if (sampleMs >= 0L && nowElapsedRealtime > sampleAt) {
+        val wall = (nowElapsedRealtime - sampleAt).coerceAtLeast(1L).toDouble()
+        val velocity = abs(clamped - sampleMs).toDouble() / wall
+        fling = velocity >= SCRUB_FLING_MEDIA_PER_WALL
+        hold.fast = velocity >= SCRUB_FAST_MEDIA_PER_WALL
+    }
+    hold.lastSampleMs = clamped
+    hold.lastSampleAt = nowElapsedRealtime
+
+    val last = hold.lastSeekMs
+    if (last < 0L) {
+        return ScrubPreviewDecision(shouldSeek = true, fling = false)
+    }
+
+    val elapsed = nowElapsedRealtime - hold.lastSeekAt
+    val delta = abs(clamped - last)
+    if (fling) {
+        return ScrubPreviewDecision(shouldSeek = false, fling = true)
+    }
+    val throttle = if (hold.fast) SCRUB_FAST_THROTTLE_MS else SCRUB_THROTTLE_MS
+    val smallMove = delta < SCRUB_MIN_DELTA_MS && elapsed < throttle
+    val tooSoon = delta < SCRUB_FORCE_DELTA_MS && elapsed < throttle
+    if (smallMove || tooSoon) {
+        return ScrubPreviewDecision(shouldSeek = false, fling = false)
+    }
+    return ScrubPreviewDecision(shouldSeek = true, fling = false)
+}
 
 internal fun startVideoScrub(player: Player?, hold: ScrubHold) {
     if (player == null || hold.active) return
@@ -247,6 +306,9 @@ internal fun startVideoScrub(player: Player?, hold: ScrubHold) {
     hold.volume = player.volume
     hold.lastSeekMs = -1L
     hold.pendingMs = -1L
+    hold.lastSampleMs = -1L
+    hold.lastSampleAt = 0L
+    hold.fast = false
     // Mute once — do not thrash audio session / EQ attach on every tick.
     if (hold.volume > 0f) runCatching { player.volume = 0f }
     if (hold.wasPlaying) runCatching { player.pause() }
@@ -255,17 +317,10 @@ internal fun startVideoScrub(player: Player?, hold: ScrubHold) {
 
 internal fun previewSeekTo(player: Player?, target: Long, hold: ScrubHold) {
     if (player == null) return
-    val clamped = target.coerceAtLeast(0L)
-    hold.pendingMs = clamped
     val now = SystemClock.elapsedRealtime()
-    val last = hold.lastSeekMs
-    val elapsed = now - hold.lastSeekAt
-    if (last >= 0L) {
-        val delta = abs(clamped - last)
-        val smallMove = delta < SCRUB_MIN_DELTA_MS && elapsed < SCRUB_THROTTLE_MS
-        val tooSoon = delta < SCRUB_FORCE_DELTA_MS && elapsed < SCRUB_THROTTLE_MS
-        if (smallMove || tooSoon) return
-    }
+    val decision = decidePreviewSeek(target, hold, now)
+    if (!decision.shouldSeek) return
+    val clamped = hold.pendingMs.coerceAtLeast(0L)
     hold.lastSeekMs = clamped
     hold.lastSeekAt = now
     hold.pendingMs = -1L
@@ -287,4 +342,7 @@ internal fun finishVideoScrub(player: Player?, target: Long, hold: ScrubHold) {
     hold.active = false
     hold.lastSeekMs = -1L
     hold.pendingMs = -1L
+    hold.lastSampleMs = -1L
+    hold.lastSampleAt = 0L
+    hold.fast = false
 }

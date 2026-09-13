@@ -642,7 +642,7 @@ internal fun PlayerControls(
             BufferedProgressTrack(
                 progress = playProgress,
                 buffered = bufferedFrac,
-                trackHeight = if (landscape) 4.dp else 5.dp,
+                trackHeight = if (landscape) 5.dp else 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.Center)
@@ -678,13 +678,13 @@ internal fun PlayerControls(
                 } else {
                     formatDuration(displayPos)
                 },
-                style = MaterialTheme.typography.labelSmall,
-                color = ForgeMuted,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.88f),
             )
             Text(
                 text = formatDuration(durationMs),
-                style = MaterialTheme.typography.labelSmall,
-                color = ForgeMuted,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.88f),
             )
         }
         // Primary transport — VLC-like centered prev / play / next

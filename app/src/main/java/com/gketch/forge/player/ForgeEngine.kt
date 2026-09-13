@@ -50,7 +50,8 @@ object ForgeEngine {
      * Faster keyframe seeks while the user is scrubbing the main surface.
      * Prefer PREVIOUS_SYNC (preceding keyframe) for responsive preview on 720p/x265;
      * CLOSEST_SYNC as fallback. Restores precise-seek preference when [enabled] is false.
-     * Stay on Media3 1.5.1 — scrubbingMode APIs need 1.8+ and risk cast/session churn.
+     * Stay on Media3 1.5.1 for 1.28.1 — 1.11 scrubbingMode helps but risks
+     * Cast/session/renderer constructor churn on a hotfix. Pair with lighter UI scrub.
      */
     fun setScrubSeek(enabled: Boolean) {
         val p = playerRef.get() ?: return

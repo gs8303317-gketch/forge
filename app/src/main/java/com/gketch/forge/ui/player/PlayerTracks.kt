@@ -361,3 +361,64 @@ internal fun applyExternalSubtitle(player: Player, uri: android.net.Uri) {
         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
         .build()
 }
+
+
+internal fun buildQueueMediaItems(queue: List<ForgeMediaItem>): List<MediaItem> {
+    return queue.mapNotNull { item ->
+        val uri = item.uri
+        if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) null
+        else buildPlayerMediaItem(item, subtitleUri = null)
+    }
+}
+
+internal fun mediaItemHasSidecar(item: MediaItem?): Boolean {
+    return item?.localConfiguration?.subtitleConfigurations?.isNotEmpty() == true
+}
+
+/**
+ * Optional sidecar attach after first frame — never delay prepare/play.
+ * Current item first, then the rest of the queue (replace only, no surface rebind).
+ */
+internal suspend fun attachSidecarsInBackground(
+    context: Context,
+    player: Player,
+    queue: List<ForgeMediaItem>,
+    startIndex: Int,
+    onCurrentSidecar: (ForgeMediaItem, android.net.Uri) -> Unit,
+) {
+    val start = queue.getOrNull(startIndex)
+    if (start != null) {
+        attachSidecarForQueueIndex(context, player, queue, startIndex, onCurrentSidecar)
+    }
+    for (i in queue.indices) {
+        if (i == startIndex) continue
+        attachSidecarForQueueIndex(context, player, queue, i, onCurrent = null)
+    }
+}
+
+internal suspend fun attachSidecarForQueueIndex(
+    context: Context,
+    player: Player,
+    queue: List<ForgeMediaItem>,
+    index: Int,
+    onCurrent: ((ForgeMediaItem, android.net.Uri) -> Unit)?,
+) {
+    val item = queue.getOrNull(index) ?: return
+    if (!item.isVideo) return
+    val sidecar = withContext(Dispatchers.IO) {
+        runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
+    } ?: return
+    withContext(Dispatchers.Main.immediate) {
+        if (index !in 0 until player.mediaItemCount) return@withContext
+        val existing = player.getMediaItemAt(index)
+        if (existing.mediaId != item.uri.toString()) return@withContext
+        if (mediaItemHasSidecar(existing)) return@withContext
+        val isCurrent = player.currentMediaItemIndex == index
+        if (isCurrent) {
+            applyExternalSubtitle(player, sidecar)
+            onCurrent?.invoke(item, sidecar)
+        } else {
+            player.replaceMediaItem(index, buildPlayerMediaItem(item, sidecar))
+        }
+    }
+}

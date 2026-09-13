@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,7 +104,6 @@ fun ForgeNav(
         session = PlaybackSession(items, safeIndex)
         navController.navigate(Routes.PLAYER) {
             launchSingleTop = true
-            // A new session must not restore a previous empty/error Player composition.
             restoreState = false
         }
     }
@@ -116,14 +116,11 @@ fun ForgeNav(
         onExternalConsumed()
     }
 
-    // Hold a black frame until PIN prefs are read and the Activity is resumed.
-    // BiometricPrompt must not be created before onResume (1.14.0 crash).
     if (!pinHydrated || (blocking && !activityResumed)) {
         Box(Modifier.fillMaxSize().background(ForgeBlack))
         return
     }
 
-    // Cold start: full-screen lock before any library UI
     if (blocking && !pendingSettings && !pendingPlaylists) {
         PinLockGate(
             store = pinStore,
@@ -136,8 +133,6 @@ fun ForgeNav(
         return
     }
 
-    // Soft lock for settings / playlists when session not yet unlocked
-    // (also covers case where we somehow land here without cold-start unlock)
     if (blocking && (pendingSettings || pendingPlaylists)) {
         PinLockGate(
             store = pinStore,
@@ -163,18 +158,20 @@ fun ForgeNav(
 
     NavHost(navController = navController, startDestination = start) {
         composable(Routes.PERMISSION) {
-            PermissionScreen(
-                onGranted = {
-                    navController.navigate(Routes.LIBRARY) {
-                        popUpTo(Routes.PERMISSION) { inclusive = true }
-                    }
-                },
-                onSkip = {
-                    navController.navigate(Routes.LIBRARY) {
-                        popUpTo(Routes.PERMISSION) { inclusive = true }
-                    }
-                },
-            )
+            Box(Modifier.fillMaxSize().background(ForgeBlack).safeDrawingPadding()) {
+                PermissionScreen(
+                    onGranted = {
+                        navController.navigate(Routes.LIBRARY) {
+                            popUpTo(Routes.PERMISSION) { inclusive = true }
+                        }
+                    },
+                    onSkip = {
+                        navController.navigate(Routes.LIBRARY) {
+                            popUpTo(Routes.PERMISSION) { inclusive = true }
+                        }
+                    },
+                )
+            }
         }
         composable(Routes.LIBRARY) {
             LibraryScreen(
@@ -208,13 +205,17 @@ fun ForgeNav(
             )
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            Box(Modifier.fillMaxSize().background(ForgeBlack).safeDrawingPadding()) {
+                SettingsScreen(onBack = { navController.popBackStack() })
+            }
         }
         composable(Routes.HISTORY) {
-            HistoryScreen(
-                onBack = { navController.popBackStack() },
-                onPlay = { item -> openQueue(listOf(item), 0) },
-            )
+            Box(Modifier.fillMaxSize().background(ForgeBlack).safeDrawingPadding()) {
+                HistoryScreen(
+                    onBack = { navController.popBackStack() },
+                    onPlay = { item -> openQueue(listOf(item), 0) },
+                )
+            }
         }
         composable(Routes.PLAYER) {
             val current = session

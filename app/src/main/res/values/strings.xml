@@ -152,4 +152,8 @@
     <string name="snapshot_saved_share">Saved — choose an app to share</string>
     <string name="series_auto_next_sub">When an episode ends, offer Play next / Stop for the next file in the folder</string>
     <string name="volume_boost_gesture">Volume boost</string>
+    <string name="pause_on_headset">Pause on headset unplug</string>
+    <string name="pause_on_headset_sub">Pause when wired headphones or Bluetooth disconnect (AUDIO_BECOMING_NOISY)</string>
+    <string name="recently_added">Recently added</string>
+    <string name="auto_sidecar_subs">Auto sidecar subtitles</string>
 </resources>

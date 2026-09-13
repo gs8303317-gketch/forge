@@ -52,6 +52,7 @@ data class LibraryUiState(
     val recent: List<ForgeMediaItem> = emptyList(),
     val favorites: List<ForgeMediaItem> = emptyList(),
     val continueWatching: List<ContinueWatchItem> = emptyList(),
+    val recentlyAdded: List<ForgeMediaItem> = emptyList(),
     val favoriteUris: Set<String> = emptySet(),
     val folders: List<MediaFolder> = emptyList(),
     val folderItemsAll: List<ForgeMediaItem> = emptyList(),
@@ -301,6 +302,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         folderItemsAll = folderAll,
                         folderItems = filterFolderItems(folderAll, it.query),
                         continueWatching = continuing,
+                        recentlyAdded = recentlyAddedVideos(items),
                         loading = false,
                         refreshing = false,
                         audioGroups = groups,
@@ -357,6 +359,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         folderItemsAll = folderAll,
                         folderItems = filterFolderItems(folderAll, it.query),
                         continueWatching = continuing,
+                        recentlyAdded = recentlyAddedVideos(items),
                         loading = false,
                         audioGroups = groups,
                         selectedAudioGroup = sel,
@@ -772,6 +775,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun markWatched(uri: String) {
         viewModelScope.launch { watchedStore.markWatched(uri) }
     }
+
+
+    private fun recentlyAddedVideos(items: List<ForgeMediaItem>, limit: Int = 24): List<ForgeMediaItem> =
+        items.filter { it.isVideo }
+            .sortedByDescending { it.dateAdded }
+            .take(limit)
 
     private fun applyFilterAndSort(
         items: List<ForgeMediaItem>,

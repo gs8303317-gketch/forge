@@ -175,6 +175,8 @@ import com.gketch.forge.data.MediaKind
 import com.gketch.forge.data.RecentStore
 import com.gketch.forge.data.ResumeBehavior
 import com.gketch.forge.data.ResumeStore
+import com.gketch.forge.data.SidecarSubtitles
+import com.gketch.forge.data.TrackPrefsStore
 import com.gketch.forge.data.WatchedStore
 import com.gketch.forge.playback.ForgeAudioFx
 import com.gketch.forge.playback.ForgeBalance
@@ -244,6 +246,7 @@ fun PlayerScreen(
     val mediaRepository = remember { MediaRepository(context) }
     val watchedStore = remember { WatchedStore(context) }
     val appSettingsStore = remember { AppSettingsStore(context) }
+    val trackPrefsStore = remember { TrackPrefsStore(context) }
     val controller = rememberPlayerController()
 
     var playQueue by remember { mutableStateOf(queue) }
@@ -285,6 +288,8 @@ fun PlayerScreen(
     var subtitlePosition by remember { mutableStateOf(SubtitlePosition.BOTTOM) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var externalSubtitleUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var tracksRestoredUri by remember { mutableStateOf<String?>(null) }
+    var autoSidecarForUri by remember { mutableStateOf<String?>(null) }
     var textTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
     var audioTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
     var videoTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
@@ -349,9 +354,13 @@ fun PlayerScreen(
                 // Non-persistable grant is still usable for this session
             }
             externalSubtitleUri = uri
+            autoSidecarForUri = null
             controller?.let { applyExternalSubtitle(it, uri) }
             subtitlesEnabled = true
             enableTextTracks(controller, true)
+            current?.uri?.toString()?.let { u ->
+                scope.launch { runCatching { trackPrefsStore.saveTextDisabled(u, false) } }
+            }
             panel = Panel.None
         }
     }
@@ -571,6 +580,24 @@ fun PlayerScreen(
                     if (tracks.groups.isNotEmpty()) {
                         hasVideo = video || (current?.kind == MediaKind.VIDEO && player.videoSize.width > 0)
                     }
+                    val uri = player.currentMediaItem?.mediaId
+                    if (!uri.isNullOrBlank() && tracksRestoredUri != uri && tracks.groups.isNotEmpty()) {
+                        tracksRestoredUri = uri
+                        scope.launch {
+                            runCatching {
+                                val prefs = trackPrefsStore.get(uri)
+                                restoreRememberedTracks(
+                                    player = player,
+                                    uri = uri,
+                                    prefs = prefs,
+                                    onSubtitlesEnabled = { subtitlesEnabled = it },
+                                )
+                                // Refresh track lists after restore
+                                textTracks = collectTracks(player.currentTracks, C.TRACK_TYPE_TEXT)
+                                audioTracks = collectTracks(player.currentTracks, C.TRACK_TYPE_AUDIO)
+                            }
+                        }
+                    }
                 }
 
                 override fun onRepeatModeChanged(mode: Int) {
@@ -655,6 +682,8 @@ fun PlayerScreen(
             }
             loadedKey = key
             externalSubtitleUri = null
+            autoSidecarForUri = null
+            tracksRestoredUri = null
             resumePromptMs = null
             pendingResumeUri = null
             rememberResumeChoice = false
@@ -707,6 +736,8 @@ fun PlayerScreen(
         if (alreadySame && loadedKey == key) return@LaunchedEffect
         loadedKey = key
         externalSubtitleUri = null
+        autoSidecarForUri = null
+        tracksRestoredUri = null
         resumePromptMs = null
         pendingResumeUri = null
         rememberResumeChoice = false
@@ -717,19 +748,22 @@ fun PlayerScreen(
         val items = playQueue.mapNotNull { item ->
             val uri = item.uri
             if (uri == android.net.Uri.EMPTY || uri.toString().isBlank()) return@mapNotNull null
-            MediaItem.Builder()
-                .setUri(uri)
-                .setMediaId(uri.toString())
-                .setMimeType(item.mimeType.takeIf { it.isNotBlank() && '*' !in it })
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(item.title.ifBlank { "Media" })
-                        .setArtist(item.artist.ifBlank { "Forge" })
-                        .setArtworkUri(item.albumArtUri)
-                        .setIsPlayable(true)
-                        .build(),
-                )
-                .build()
+            val sidecar = runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
+            buildPlayerMediaItem(item, sidecar)
+        }
+        // Reflect auto-loaded sidecar on the start item for subtitle UI state.
+        runCatching {
+            val startItem = playQueue.getOrNull(safeStart)
+            if (startItem != null) {
+                val sc = SidecarSubtitles.find(context, startItem)
+                if (sc != null) {
+                    externalSubtitleUri = sc
+                    autoSidecarForUri = startItem.uri.toString()
+                    subtitlesEnabled = true
+                } else {
+                    autoSidecarForUri = null
+                }
+            }
         }
         if (items.isEmpty()) {
             playerError = "Invalid media URI"
@@ -2087,10 +2121,16 @@ fun PlayerScreen(
                 onToggle = { on ->
                     subtitlesEnabled = on
                     enableTextTracks(controller, on)
+                    current?.uri?.toString()?.let { u ->
+                        scope.launch { runCatching { trackPrefsStore.saveTextDisabled(u, !on) } }
+                    }
                 },
                 onSelectTrack = { choice ->
                     subtitlesEnabled = true
                     selectTrack(controller, C.TRACK_TYPE_TEXT, choice)
+                    current?.uri?.toString()?.let { u ->
+                        scope.launch { runCatching { trackPrefsStore.saveText(u, choice.label) } }
+                    }
                 },
                 onSize = {
                     subtitleSizeSp = it
@@ -2114,24 +2154,18 @@ fun PlayerScreen(
                 },
                 onClearExternal = {
                     externalSubtitleUri = null
-                    // Reload current item without subtitles
+                    autoSidecarForUri = null
+                    // Reload current item; re-apply auto sidecar if present
                     val player = controller ?: return@SubtitleDialog
                     val item = playQueue.getOrNull(player.currentMediaItemIndex) ?: return@SubtitleDialog
                     val pos = player.currentPosition
                     val ready = player.playWhenReady
-                    val media = MediaItem.Builder()
-                        .setUri(item.uri)
-                        .setMediaId(item.uri.toString())
-                        .setMimeType(item.mimeType.takeIf { it.isNotBlank() && '*' !in it })
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(item.title)
-                                .setArtist(item.artist.ifBlank { "Forge" })
-                                .setArtworkUri(item.albumArtUri)
-                                .setIsPlayable(true)
-                                .build(),
-                        )
-                        .build()
+                    val sidecar = runCatching { SidecarSubtitles.find(context, item) }.getOrNull()
+                    if (sidecar != null) {
+                        externalSubtitleUri = sidecar
+                        autoSidecarForUri = item.uri.toString()
+                    }
+                    val media = buildPlayerMediaItem(item, sidecar)
                     player.replaceMediaItem(player.currentMediaItemIndex, media)
                     player.seekTo(player.currentMediaItemIndex, pos)
                     player.prepare()
@@ -2146,6 +2180,9 @@ fun PlayerScreen(
                 onDismiss = { panel = Panel.None },
                 onSelect = { choice ->
                     selectTrack(controller, C.TRACK_TYPE_AUDIO, choice)
+                    current?.uri?.toString()?.let { u ->
+                        scope.launch { runCatching { trackPrefsStore.saveAudio(u, choice.label) } }
+                    }
                     panel = Panel.None
                 },
             )
@@ -2409,15 +2446,13 @@ fun PlayerScreen(
                                         val mutable = playQueue.toMutableList()
                                         mutable.add(next)
                                         playQueue = mutable
-                                        val media = androidx.media3.common.MediaItem.Builder()
-                                            .setUri(next.uri)
-                                            .setMediaId(next.uri.toString())
-                                            .setMediaMetadata(
-                                                androidx.media3.common.MediaMetadata.Builder()
-                                                    .setTitle(next.title)
-                                                    .build(),
-                                            )
-                                            .build()
+                                        val sidecar = runCatching { SidecarSubtitles.find(context, next) }.getOrNull()
+                                        val media = buildPlayerMediaItem(next, sidecar)
+                                        if (sidecar != null) {
+                                            externalSubtitleUri = sidecar
+                                            autoSidecarForUri = next.uri.toString()
+                                        }
+                                        tracksRestoredUri = null
                                         player.addMediaItem(media)
                                         player.seekToNextMediaItem()
                                         player.play()
@@ -3628,18 +3663,77 @@ private fun enableTextTracks(player: Player?, enabled: Boolean) {
         .build()
 }
 
+
+private fun subtitleMimeForUri(uri: android.net.Uri): String {
+    val path = (uri.lastPathSegment ?: uri.toString()).lowercase()
+    return if (path.endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+}
+
+private fun buildPlayerMediaItem(
+    item: ForgeMediaItem,
+    subtitleUri: android.net.Uri? = null,
+): MediaItem {
+    val builder = MediaItem.Builder()
+        .setUri(item.uri)
+        .setMediaId(item.uri.toString())
+        .setMimeType(item.mimeType.takeIf { it.isNotBlank() && '*' !in it })
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(item.title.ifBlank { "Media" })
+                .setArtist(item.artist.ifBlank { "Forge" })
+                .setArtworkUri(item.albumArtUri)
+                .setIsPlayable(true)
+                .build(),
+        )
+    if (subtitleUri != null) {
+        val subtitle = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+            .setMimeType(subtitleMimeForUri(subtitleUri))
+            .setLanguage("und")
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+        builder.setSubtitleConfigurations(listOf(subtitle))
+    }
+    return builder.build()
+}
+
+private fun restoreRememberedTracks(
+    player: Player,
+    uri: String,
+    prefs: com.gketch.forge.data.TrackPrefs,
+    onSubtitlesEnabled: (Boolean) -> Unit,
+) {
+    runCatching {
+        if (prefs.textDisabled) {
+            onSubtitlesEnabled(false)
+            enableTextTracks(player, false)
+        } else {
+            onSubtitlesEnabled(true)
+            enableTextTracks(player, true)
+            val text = collectTracks(player.currentTracks, C.TRACK_TYPE_TEXT)
+            val want = prefs.textLabel
+            if (!want.isNullOrBlank()) {
+                val match = text.firstOrNull { it.label.equals(want, ignoreCase = true) }
+                    ?: text.firstOrNull { it.label.contains(want, ignoreCase = true) }
+                if (match != null) selectTrack(player, C.TRACK_TYPE_TEXT, match)
+            }
+        }
+        val audio = collectTracks(player.currentTracks, C.TRACK_TYPE_AUDIO)
+        val wantAudio = prefs.audioLabel
+        if (!wantAudio.isNullOrBlank()) {
+            val match = audio.firstOrNull { it.label.equals(wantAudio, ignoreCase = true) }
+                ?: audio.firstOrNull { it.label.contains(wantAudio, ignoreCase = true) }
+            if (match != null) selectTrack(player, C.TRACK_TYPE_AUDIO, match)
+        }
+    }
+}
+
 private fun applyExternalSubtitle(player: Player, uri: android.net.Uri) {
     val current = player.currentMediaItem ?: return
     val index = player.currentMediaItemIndex
     val position = player.currentPosition
     val ready = player.playWhenReady
-    val path = (uri.lastPathSegment ?: uri.toString()).lowercase()
-    val mime = when {
-        path.endsWith(".vtt") -> MimeTypes.TEXT_VTT
-        else -> MimeTypes.APPLICATION_SUBRIP
-    }
     val subtitle = MediaItem.SubtitleConfiguration.Builder(uri)
-        .setMimeType(mime)
+        .setMimeType(subtitleMimeForUri(uri))
         .setLanguage("und")
         .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
         .build()

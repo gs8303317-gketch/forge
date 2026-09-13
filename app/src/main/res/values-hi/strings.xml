@@ -149,4 +149,8 @@
     <string name="snapshot_saved_share">सहेजा गया — साझा करने के लिए ऐप चुनें</string>
     <string name="series_auto_next_sub">एपिसोड खत्म होने पर अगली फ़ाइल के लिए Play next / Stop दिखाएँ</string>
     <string name="volume_boost_gesture">वॉल्यूम बूस्ट</string>
+    <string name="pause_on_headset">हेडसेट अनप्लग पर रोकें</string>
+    <string name="pause_on_headset_sub">वायर्ड हेडफ़ोन या ब्लूटूथ डिस्कनेक्ट होने पर पॉज़ करें</string>
+    <string name="recently_added">हाल ही में जोड़े गए</string>
+    <string name="auto_sidecar_subs">ऑटो साइडकार उपशीर्षक</string>
 </resources>

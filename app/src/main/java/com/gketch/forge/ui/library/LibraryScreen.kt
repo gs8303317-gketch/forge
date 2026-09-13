@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -906,9 +907,10 @@ private fun LibraryBody(
     val kindFavs = state.favorites.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val kindRecent = state.recent.filter { if (state.tab == LibraryTab.AUDIO) !it.isVideo else it.isVideo }
     val continueWatching = if (state.tab == LibraryTab.VIDEO) state.continueWatching else emptyList()
+    val recentlyAdded = if (state.tab == LibraryTab.VIDEO) state.recentlyAdded else emptyList()
     val sectionTitle = if (state.tab == LibraryTab.AUDIO) "Audio" else "Videos"
     when {
-        state.loading && permitted && state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() -> {
+        state.loading && permitted && state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() && recentlyAdded.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = ForgeAccent)
             }
@@ -918,7 +920,7 @@ private fun LibraryBody(
                 Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
             }
         }
-        state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() -> {
+        state.filtered.isEmpty() && kindRecent.isEmpty() && kindFavs.isEmpty() && continueWatching.isEmpty() && recentlyAdded.isEmpty() -> {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No media found", color = ForgeMuted)
@@ -948,6 +950,11 @@ private fun LibraryBody(
                             onPlay = { onPlay(listOf(it), 0) },
                             onRemove = onRemoveContinue,
                         )
+                    }
+                }
+                if (recentlyAdded.isNotEmpty() && state.query.isBlank()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "added-header") {
+                        RecentlyAddedSection(items = recentlyAdded, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
@@ -1002,6 +1009,11 @@ private fun LibraryBody(
                             onPlay = { onPlay(listOf(it), 0) },
                             onRemove = onRemoveContinue,
                         )
+                    }
+                }
+                if (recentlyAdded.isNotEmpty() && state.query.isBlank()) {
+                    item(key = "added-header") {
+                        RecentlyAddedSection(items = recentlyAdded, onPlay = { onPlay(listOf(it), 0) })
                     }
                 }
                 if (kindRecent.isNotEmpty() && state.query.isBlank()) {
@@ -1412,6 +1424,29 @@ private fun FavoritesSection(
             Icon(Icons.Rounded.Star, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Favorites", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items.take(20).forEach { item ->
+                RecentCard(item = item, onClick = { onPlay(item) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentlyAddedSection(
+    items: List<ForgeMediaItem>,
+    onPlay: (ForgeMediaItem) -> Unit,
+) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.NewReleases, null, tint = ForgeAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.recently_added), style = MaterialTheme.typography.titleMedium, color = Color.White)
         }
         Spacer(Modifier.height(10.dp))
         Row(

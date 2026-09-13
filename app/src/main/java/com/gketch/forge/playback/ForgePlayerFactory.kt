@@ -44,7 +44,7 @@ object ForgePlayerFactory {
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
-            .setHandleAudioBecomingNoisy(true)
+            .setHandleAudioBecomingNoisy(ForgeHeadsetPause.enabled)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

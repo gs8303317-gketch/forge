@@ -25,6 +25,7 @@ Premium Android media player (Kotlin + Jetpack Compose + Media3).
 - Hotfix 1.20.1: language switch no longer hangs (DataStore default SYSTEM + Activity recreate latch loop); PIN unlock survives locale recreate
 - Player 1.21.0: brightness 0–200% (dim overlay + ColorMatrix boost, video-only); pinch-to-zoom + pan (double-tap / Transform reset); night/blue-light filter; series auto-next (SxxExx / Episode) from Settings
 - Player 1.22.0: right-edge volume continues into loudness boost (>100% HUD); skip-intro setting + bottom-tools button; series end card (Play next / Stop); library pull-to-refresh / rescan; share frame snapshot via Android share sheet
+- Player 1.23.0: auto sidecar `.srt`/`.vtt` beside local video; remember audio + subtitle tracks per URI; pause on headset/BT unplug (Settings toggle, default on); Recently added home/video row
 - Player error UI (message + back — never kill process on media failure)
 - Folder browser (MediaStore buckets) with play-folder queue
 - Playlists: create / rename / delete, add / remove items, play (DataStore JSON)

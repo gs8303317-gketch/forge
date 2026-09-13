@@ -2,7 +2,12 @@ package com.gketch.forge.playback
 
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -34,6 +39,18 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var exoPlayer: ExoPlayer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var noisyRegistered = false
+    /** Covers enable-after-create when ExoPlayer was built with handleAudioBecomingNoisy=false. */
+    private val becomingNoisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AudioManager.ACTION_AUDIO_BECOMING_NOISY) return
+            if (!ForgeHeadsetPause.enabled) return
+            runCatching {
+                val player = exoPlayer ?: return
+                if (player.isPlaying || player.playWhenReady) player.pause()
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -45,6 +62,7 @@ class PlaybackService : MediaSessionService() {
             runCatching {
                 val app = AppSettingsStore(this@PlaybackService).settings.first()
                 ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
+                ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
             }
         }
 
@@ -92,8 +110,10 @@ class PlaybackService : MediaSessionService() {
         scope.launch {
             AppSettingsStore(this@PlaybackService).settings.collect { app ->
                 ForgeStreamOptions.update(app.streamUserAgent, app.streamTimeoutSec)
+                ForgeHeadsetPause.enabled = app.pauseOnHeadsetUnplug
             }
         }
+        registerNoisyReceiver()
 
         val sessionActivity = PendingIntent.getActivity(
             this,
@@ -162,6 +182,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        unregisterNoisyReceiver()
         scope.cancel()
         ForgeLoudness.release()
         ForgeEqualizer.release()
@@ -221,6 +242,28 @@ class PlaybackService : MediaSessionService() {
             return super.onCustomCommand(session, controller, customCommand, args)
         }
 
+    }
+
+    private fun registerNoisyReceiver() {
+        if (noisyRegistered) return
+        val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(becomingNoisyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(becomingNoisyReceiver, filter)
+            }
+            noisyRegistered = true
+        } catch (_: Throwable) {
+            noisyRegistered = false
+        }
+    }
+
+    private fun unregisterNoisyReceiver() {
+        if (!noisyRegistered) return
+        runCatching { unregisterReceiver(becomingNoisyReceiver) }
+        noisyRegistered = false
     }
 
     companion object {

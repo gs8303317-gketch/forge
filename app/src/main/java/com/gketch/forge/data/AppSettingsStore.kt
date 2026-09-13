@@ -131,6 +131,7 @@ data class AppSettings(
     val resumeBehavior: ResumeBehavior = ResumeBehavior.ASK,
     val seriesAutoNext: Boolean = false,
     val skipIntroSeconds: SkipIntroSeconds = SkipIntroSeconds.OFF,
+    val pauseOnHeadsetUnplug: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("seekSeconds", seekSeconds)
@@ -159,6 +160,7 @@ data class AppSettings(
         .put("resumeBehavior", resumeBehavior.name)
         .put("seriesAutoNext", seriesAutoNext)
         .put("skipIntroSeconds", skipIntroSeconds.name)
+        .put("pauseOnHeadsetUnplug", pauseOnHeadsetUnplug)
 }
 
 class AppSettingsStore(context: Context) {
@@ -239,6 +241,7 @@ class AppSettingsStore(context: Context) {
             skipIntroSeconds = runCatching {
                 SkipIntroSeconds.valueOf(p[KEY_SKIP_INTRO] ?: SkipIntroSeconds.OFF.name)
             }.getOrDefault(SkipIntroSeconds.OFF),
+            pauseOnHeadsetUnplug = p[KEY_PAUSE_HEADSET] ?: true,
         )
     }
 
@@ -359,6 +362,10 @@ class AppSettingsStore(context: Context) {
         store.edit { it[KEY_SKIP_INTRO] = value.name }
     }
 
+    suspend fun setPauseOnHeadsetUnplug(value: Boolean) {
+        store.edit { it[KEY_PAUSE_HEADSET] = value }
+    }
+
     suspend fun replaceFromJson(o: JSONObject) {
         store.edit { p ->
             if (o.has("seekSeconds")) p[KEY_SEEK] = o.optInt("seekSeconds", 10)
@@ -395,6 +402,7 @@ class AppSettingsStore(context: Context) {
             if (o.has("resumeBehavior")) p[KEY_RESUME_BEHAVIOR] = o.optString("resumeBehavior")
             if (o.has("seriesAutoNext")) p[KEY_SERIES_AUTO_NEXT] = o.optBoolean("seriesAutoNext", false)
             if (o.has("skipIntroSeconds")) p[KEY_SKIP_INTRO] = o.optString("skipIntroSeconds", SkipIntroSeconds.OFF.name)
+            if (o.has("pauseOnHeadsetUnplug")) p[KEY_PAUSE_HEADSET] = o.optBoolean("pauseOnHeadsetUnplug", true)
         }
     }
 
@@ -426,6 +434,7 @@ class AppSettingsStore(context: Context) {
         private val KEY_RESUME_BEHAVIOR = stringPreferencesKey("resume_behavior")
         private val KEY_SERIES_AUTO_NEXT = booleanPreferencesKey("series_auto_next")
         private val KEY_SKIP_INTRO = stringPreferencesKey("skip_intro_seconds")
+        private val KEY_PAUSE_HEADSET = booleanPreferencesKey("pause_on_headset_unplug")
         val SEEK_OPTIONS = listOf(5, 10, 15, 30)
         val TIMEOUT_OPTIONS = listOf(10, 20, 30, 60)
         val FADE_OPTIONS = listOf(5, 10, 15, 30)

@@ -237,6 +237,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     onChecked = { scope.launch { appStore.setSeriesAutoNext(it) } },
                 )
                 Spacer(Modifier.height(14.dp))
+                EngineSwitchRow(
+                    title = stringResource(R.string.pause_on_headset),
+                    subtitle = stringResource(R.string.pause_on_headset_sub),
+                    checked = app.pauseOnHeadsetUnplug,
+                    onChecked = { scope.launch { appStore.setPauseOnHeadsetUnplug(it) } },
+                )
+                Spacer(Modifier.height(14.dp))
                 Text(stringResource(R.string.skip_intro), color = ForgeMuted, style = MaterialTheme.typography.labelSmall)
                 Spacer(Modifier.height(6.dp))
                 Row(

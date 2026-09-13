@@ -30,6 +30,7 @@ object PlaybackErrors {
         val top = message?.takeIf { it.isNotBlank() }
         return when {
             top == "Unexpected runtime error" && causeText != null -> causeText
+            top == "Unexpected runtime error" -> "Playback glitch (code $errorCode)"
             top != null && top != "Unexpected runtime error" -> top
             causeText != null -> causeText
             else -> "Playback failed (code $errorCode)"
@@ -54,13 +55,43 @@ object PlaybackErrors {
         attemptAlready: Int,
     ): Boolean {
         if (attemptAlready >= MAX_AUTO_RETRIES) return false
+        if (isPermanentFailure(errorCode)) return false
         if (errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) return true
         if (errorCode == PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK) return true
         if (message == "Unexpected runtime error") return true
         if (exoType == ExoPlaybackException.TYPE_UNEXPECTED) return true
         return errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+            errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+            errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+            errorCode == PlaybackException.ERROR_CODE_TIMEOUT ||
             errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-            errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+            errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+            errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+            errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED
+    }
+
+    /** Broken file / policy errors that will not recover by prepare()+play(). */
+    fun isPermanentFailure(errorCode: Int): Boolean = when (errorCode) {
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+        PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+        PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
+        PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+        -> true
+        else -> false
+    }
+
+    /**
+     * Seek target that never walks off the media.
+     * Unknown / unset duration (0 or negative) stays at the current position.
+     */
+    fun safeSeekTarget(positionMs: Long, durationMs: Long, deltaMs: Long = 0L): Long {
+        val pos = positionMs.coerceAtLeast(0L)
+        if (durationMs <= 0L) return pos
+        return (pos + deltaMs).coerceIn(0L, durationMs)
     }
 
 
@@ -84,6 +115,11 @@ object PlaybackErrors {
             "recompose",
             "modifier.nod",
             "semantics",
+            "wrong thread",
+            "calledfromwrongthread",
+            "not attached",
+            "viewrootimpl",
+            "standaloneCoroutine",
         ).any { it in hay }
     }
 

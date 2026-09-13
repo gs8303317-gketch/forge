@@ -46,9 +46,11 @@ fun rememberPlayerController(): MediaController? {
 }
 
 fun Player.stopCompletely() {
-    playWhenReady = false
-    stop()
-    clearMediaItems()
+    runCatching {
+        playWhenReady = false
+        stop()
+        clearMediaItems()
+    }
     // Tear down notification / foreground service (custom STOP), not just clear the playlist.
     (this as? MediaController)?.let { controller ->
         runCatching {

@@ -99,11 +99,11 @@ fun MiniPlayerBar(
         }
     }
 
-    LaunchedEffect(controller, visible) {
-        if (controller == null || !visible) return@LaunchedEffect
+    LaunchedEffect(controller, visible, playing) {
+        if (controller == null || !visible || !playing) return@LaunchedEffect
         while (isActive) {
             sync()
-            delay(500)
+            delay(1000)
         }
     }
 

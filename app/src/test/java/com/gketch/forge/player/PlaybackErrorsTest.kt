@@ -53,6 +53,63 @@ class PlaybackErrorsTest {
     }
 
     @Test
+    fun permanentFailuresDoNotRetry() {
+        assertFalse(
+            PlaybackErrors.shouldAutoRetry(
+                message = "File not found",
+                errorCode = PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                exoType = null,
+                attemptAlready = 0,
+            ),
+        )
+        assertFalse(
+            PlaybackErrors.shouldAutoRetry(
+                message = "Unexpected runtime error",
+                errorCode = PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                exoType = ExoPlaybackException.TYPE_SOURCE,
+                attemptAlready = 0,
+            ),
+        )
+    }
+
+    @Test
+    fun networkAndTimeoutErrorsRetryWithinBudget() {
+        assertTrue(
+            PlaybackErrors.shouldAutoRetry(
+                message = "timeout",
+                errorCode = PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                exoType = null,
+                attemptAlready = 0,
+            ),
+        )
+        assertTrue(
+            PlaybackErrors.shouldAutoRetry(
+                message = "timeout",
+                errorCode = PlaybackException.ERROR_CODE_TIMEOUT,
+                exoType = null,
+                attemptAlready = 1,
+            ),
+        )
+        assertFalse(
+            PlaybackErrors.shouldAutoRetry(
+                message = "timeout",
+                errorCode = PlaybackException.ERROR_CODE_TIMEOUT,
+                exoType = null,
+                attemptAlready = 2,
+            ),
+        )
+    }
+
+    @Test
+    fun safeSeekNeverLeavesKnownDuration() {
+        assertEquals(5_000L, PlaybackErrors.safeSeekTarget(4_000L, 10_000L, 1_000L))
+        assertEquals(10_000L, PlaybackErrors.safeSeekTarget(9_000L, 10_000L, 5_000L))
+        assertEquals(0L, PlaybackErrors.safeSeekTarget(500L, 10_000L, -2_000L))
+        assertEquals(4_000L, PlaybackErrors.safeSeekTarget(4_000L, 0L, 50_000L))
+        assertEquals(4_000L, PlaybackErrors.safeSeekTarget(4_000L, -1L, 50_000L))
+    }
+
+    @Test
     fun uiFaultDetectedFromComposeCause() {
         assertTrue(
             PlaybackErrors.isLikelyUiFault(

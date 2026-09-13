@@ -13,7 +13,6 @@ import com.gketch.forge.widget.PlaybackWidgetUpdater
 class ForgeApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
-        // Never crash the process from Application.onCreate — all init is best-effort.
         try {
             ForgeContainer.get(this)
         } catch (_: Throwable) {
@@ -31,7 +30,6 @@ class ForgeApp : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .components {
-                // Prefer MediaStore/SAF thumbnail fetcher over Coil's default content decoder
                 add(MediaThumbnailFetcher.Factory())
             }
             .memoryCache {
@@ -45,7 +43,8 @@ class ForgeApp : Application(), ImageLoaderFactory {
                     .maxSizeBytes(96L * 1024L * 1024L)
                     .build()
             }
-            .crossfade(false) // less main-thread work while scrolling the library
+            .crossfade(false)
+            .allowRgb565(true)
+            .respectCacheHeaders(false)
             .build()
 }
-

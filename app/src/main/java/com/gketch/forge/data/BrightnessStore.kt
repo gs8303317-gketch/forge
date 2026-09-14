@@ -9,17 +9,14 @@ import kotlinx.coroutines.flow.first
 
 private val Context.brightnessDataStore by preferencesDataStore(name = "forge_brightness")
 
-/**
- * Per-URI video brightness fraction.
- * Range 0.01..2.0 → HUD 1%..200% where 1.0 = native (100%).
- * Values below 1 dim via black overlay; above 1 boost via ColorMatrix.
- */
+/** Per-URI window brightness. 0.01..1.0 = HUD 1%..100%. */
 class BrightnessStore(context: Context) {
     private val store = context.applicationContext.brightnessDataStore
 
     suspend fun get(uri: String): Float? {
         val key = floatPreferencesKey(keyFor(uri))
-        return store.data.first()[key]
+        val raw = store.data.first()[key] ?: return null
+        return raw.coerceIn(MIN, MAX)
     }
 
     suspend fun save(uri: String, fraction: Float) {
@@ -33,7 +30,7 @@ class BrightnessStore(context: Context) {
 
     companion object {
         const val MIN = 0.01f
-        const val MAX = 2f
+        const val MAX = 1f
         const val DEFAULT = 1f
 
         fun keyFor(uri: String): String {

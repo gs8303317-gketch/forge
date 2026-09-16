@@ -251,6 +251,9 @@ fun PlayerScreen(
     var seriesPrompt by remember { mutableStateOf<ForgeMediaItem?>(null) }
     var seriesHandledUri by remember { mutableStateOf<String?>(null) }
     val scrubHold = remember { ScrubHold() }
+    DisposableEffect(Unit) {
+        onDispose { releaseScrubResources(scrubHold) }
+    }
     var hasVideo by remember { mutableStateOf(current?.kind == MediaKind.VIDEO) }
     var speed by remember { mutableFloatStateOf(1f) }
     var panel by remember { mutableStateOf(Panel.None) }
@@ -672,7 +675,6 @@ fun PlayerScreen(
             audioTracks = collectTracks(player.currentTracks, C.TRACK_TYPE_AUDIO)
             onDispose {
                 if (scrubHold.active) {
-                    runCatching { ForgeEngine.setScrubSeek(false) }
                     runCatching { player.volume = scrubHold.volume }
                     scrubHold.active = false
                 }
@@ -1230,6 +1232,31 @@ fun PlayerScreen(
                                 },
                             ),
                     )
+                    // Dedicated scrub ExoPlayer surface — fullscreen realtime per-second preview.
+                    if (scrubbing && scrubHold.scrubPlayer != null) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PlayerView(ctx).apply {
+                                    useController = false
+                                    resizeMode = aspect.resizeMode
+                                    subtitleView?.visibility = android.view.View.GONE
+                                    this.player = scrubHold.scrubPlayer
+                                }
+                            },
+                            update = {
+                                if (it.player !== scrubHold.scrubPlayer) {
+                                    it.player = scrubHold.scrubPlayer
+                                }
+                                if (it.resizeMode != aspect.resizeMode) {
+                                    it.resizeMode = aspect.resizeMode
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(2f)
+                                .background(ForgeBlack),
+                        )
+                    }
                 } else {
                     AudioArtwork(title = current?.title.orEmpty())
                 }
@@ -1279,12 +1306,12 @@ fun PlayerScreen(
                         else -> 40.dp.toPx()
                     }
                 }
-                // Slider / settle: last good frame + oversized timecode (gesture SeekHud covers swipe).
+                // Oversized timecode while slider-scrubbing / settling (gesture SeekHud covers swipe).
                 if (!inPip && isVideoSurface && (scrubFromSlider && scrubbing || scrubSettling)) {
                     val dur = progress.durationMs
                     val pos = when {
                         scrubSettling && settleTargetMs >= 0L -> settleTargetMs
-                        dur > 0L -> (scrubValue * dur).toLong()
+                        dur > 0L -> quantizeToSecondMs((scrubValue * dur).toLong())
                         else -> 0L
                     }
                     ScrubTimecodeHud(elapsedMs = pos, totalMs = dur)
@@ -1296,16 +1323,17 @@ fun PlayerScreen(
                         positionMs = positionMs,
                         seekSeconds = appSettings.seekSeconds,
                         onSeek = { target ->
-                            finishVideoScrub(controller, target, scrubHold)
-                            positionMs = target
+                            val settle = quantizeToSecondMs(target)
+                            finishVideoScrub(controller, scrubHold, settle)
+                            positionMs = settle
                             progress.updateProgress(
-                                target,
+                                settle,
                                 durationMs,
                                 progress.bufferedMs,
                                 progress.buffering,
                                 progress.playbackState,
                             )
-                            settleTargetMs = target
+                            settleTargetMs = settle
                             scrubSettling = true
                             scrubbing = false
                             scrubFromSlider = false
@@ -1315,8 +1343,8 @@ fun PlayerScreen(
                             scrubbing = true
                             scrubFromSlider = false
                             scrubValue = (target.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
-                            startVideoScrub(controller, scrubHold)
-                            previewSeekTo(controller, target, scrubHold)
+                            startVideoScrub(controller, scrubHold, context, current?.uri?.takeIf { isVideoSurface })
+                            previewSeekTo(scrubHold, target, controller)
                         },
                         onDoubleTapSeek = { back ->
                             val deltaMs = appSettings.seekSeconds * 1000L
@@ -2073,14 +2101,14 @@ fun PlayerScreen(
                     controlsHideToken++
                     val dur = progress.durationMs
                     if (dur > 0L) {
-                        startVideoScrub(controller, scrubHold)
-                        previewSeekTo(controller, (it * dur).toLong(), scrubHold)
+                        startVideoScrub(controller, scrubHold, context, current?.uri?.takeIf { isVideoSurface })
+                        previewSeekTo(scrubHold, (it * dur).toLong(), controller)
                     }
                 },
                 onScrubEnd = {
                     val dur = progress.durationMs
-                    val seekTo = (scrubValue * dur).toLong()
-                    finishVideoScrub(controller, seekTo, scrubHold)
+                    val seekTo = quantizeToSecondMs((scrubValue * dur).toLong())
+                    finishVideoScrub(controller, scrubHold, seekTo)
                     positionMs = seekTo
                     progress.updateProgress(seekTo, dur, progress.bufferedMs, progress.buffering, progress.playbackState)
                     settleTargetMs = seekTo

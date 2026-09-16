@@ -1,5 +1,6 @@
 package com.gketch.forge.ui.player
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,57 +8,45 @@ import org.junit.Test
 class PlayerScrubTest {
 
     @Test
-    fun firstPreviewSeekAlwaysFires() {
-        val hold = ScrubHold()
-        val d = decidePreviewSeek(10_000L, hold, nowElapsedRealtime = 1_000L)
-        assertTrue(d.shouldSeek)
-        assertFalse(d.fling)
+    fun quantizeFloorsToWholeSecond() {
+        assertEquals(0L, quantizeToSecondMs(0L))
+        assertEquals(0L, quantizeToSecondMs(999L))
+        assertEquals(1_000L, quantizeToSecondMs(1_000L))
+        assertEquals(1_000L, quantizeToSecondMs(1_999L))
+        assertEquals(12_000L, quantizeToSecondMs(12_450L))
     }
 
     @Test
-    fun smallMoveWithinThrottleIsSkipped() {
-        val hold = ScrubHold()
-        val first = decidePreviewSeek(10_000L, hold, 1_000L)
-        assertTrue(first.shouldSeek)
-        hold.lastSeekMs = 10_000L
-        hold.lastSeekAt = 1_000L
-        val d = decidePreviewSeek(10_200L, hold, 1_050L)
-        assertFalse(d.shouldSeek)
+    fun quantizeClampsNegativeToZero() {
+        assertEquals(0L, quantizeToSecondMs(-50L))
+        assertEquals(0L, quantizeToSecondMs(-1_500L))
     }
 
     @Test
-    fun flingStillPreviewsWhenJumpIsLarge() {
-        val hold = ScrubHold()
-        decidePreviewSeek(10_000L, hold, 1_000L)
-        hold.lastSeekMs = 10_000L
-        hold.lastSeekAt = 1_000L
-        val d = decidePreviewSeek(40_000L, hold, 1_100L)
-        assertTrue(d.shouldSeek)
-        assertTrue(d.fling)
+    fun firstDistinctSecondAlwaysSeeks() {
+        assertTrue(shouldPreviewSeekSecond(10_400L, lastPreviewSecondMs = -1L))
     }
 
     @Test
-    fun slowDragSeeksAfterThrottle() {
-        val hold = ScrubHold()
-        decidePreviewSeek(10_000L, hold, 1_000L)
-        hold.lastSeekMs = 10_000L
-        hold.lastSeekAt = 1_000L
-        hold.lastSampleMs = 10_000L
-        hold.lastSampleAt = 1_000L
-        val d = decidePreviewSeek(10_800L, hold, 1_400L)
-        assertTrue(d.shouldSeek)
-        assertFalse(d.fling)
+    fun sameSecondDoesNotReseek() {
+        assertFalse(shouldPreviewSeekSecond(10_200L, lastPreviewSecondMs = 10_000L))
+        assertFalse(shouldPreviewSeekSecond(10_999L, lastPreviewSecondMs = 10_000L))
     }
 
     @Test
-    fun fastDragUsesLargerThrottle() {
-        val hold = ScrubHold()
-        decidePreviewSeek(10_000L, hold, 1_000L)
-        hold.lastSeekMs = 10_000L
-        hold.lastSeekAt = 1_000L
-        // 400ms media / 80ms wall = 5× → fast, not fling; still inside 140ms throttle
-        val d = decidePreviewSeek(10_400L, hold, 1_080L)
-        assertFalse(d.shouldSeek)
-        assertTrue(hold.fast)
+    fun nextSecondSeeksImmediatelyNoThrottle() {
+        assertTrue(shouldPreviewSeekSecond(11_000L, lastPreviewSecondMs = 10_000L))
+        assertTrue(shouldPreviewSeekSecond(11_050L, lastPreviewSecondMs = 10_000L))
+    }
+
+    @Test
+    fun flingJumpStillSeeksLatestSecond() {
+        assertTrue(shouldPreviewSeekSecond(40_000L, lastPreviewSecondMs = 10_000L))
+    }
+
+    @Test
+    fun backwardSecondSeeks() {
+        assertTrue(shouldPreviewSeekSecond(9_500L, lastPreviewSecondMs = 10_000L))
+        assertEquals(9_000L, quantizeToSecondMs(9_500L))
     }
 }

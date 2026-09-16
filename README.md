@@ -20,6 +20,7 @@ applicationId remains `com.gketch.forge`.
 
 ## Features
 
+- Player 1.29.11: hard realtime per-second scrub via dedicated scrub ExoPlayer (PREVIOUS_SYNC), fullscreen overlay, settle on whole second; no adaptive throttle
 - Architecture 1.28.0: package tidy (`player/`, `domain/`, `di/`), split Player/Library/Settings god files — no intentional UX change
 - Hotfix 1.28.1: lighter seek preview (adaptive throttle + fling settle, last-frame + big timecode); faster first frame (sidecar after play, lower bufferForPlaybackMs); VLC-like scrub HUD
 - Polish 1.28.2: VLC-snappy gesture detectors (slop/axis-lock/dismiss threshold); quieter brightness/volume/seek HUDs; denser player chrome; swipe-down less aggressive so it never steals seek

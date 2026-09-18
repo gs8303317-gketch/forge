@@ -4,6 +4,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 @UnstableApi
@@ -11,8 +12,14 @@ object ForgeEngine {
     private val playerRef = AtomicReference<ExoPlayer?>(null)
     private val audioDelayMsRef = AtomicInteger(0)
     private val scrubbingRef = AtomicBoolean(false)
+    private val hideBufferUntilElapsed = AtomicLong(0L)
 
     val isScrubbing: Boolean get() = scrubbingRef.get()
+
+    val hideBufferHud: Boolean
+        get() = scrubbingRef.get() ||
+            android.os.SystemClock.elapsedRealtime() < hideBufferUntilElapsed.get()
+
     val audioDelayMs: Int get() = audioDelayMsRef.get()
 
     fun attach(player: ExoPlayer) {
@@ -46,20 +53,20 @@ object ForgeEngine {
 
     fun setScrubSeek(enabled: Boolean) {
         scrubbingRef.set(enabled)
+        if (enabled) {
+            hideBufferUntilElapsed.set(Long.MAX_VALUE / 4)
+        } else {
+            hideBufferUntilElapsed.set(android.os.SystemClock.elapsedRealtime() + 700L)
+        }
         val p = playerRef.get() ?: return
         try {
-            if (enabled) {
-                p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
-            } else {
-                applySeekPrefs(p)
-            }
+            p.setSeekParameters(
+                if (enabled) androidx.media3.exoplayer.SeekParameters.PREVIOUS_SYNC
+                else androidx.media3.exoplayer.SeekParameters.DEFAULT,
+            )
         } catch (_: Throwable) {
             try {
-                if (enabled) {
-                    p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.PREVIOUS_SYNC)
-                } else {
-                    applySeekPrefs(p)
-                }
+                p.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
             } catch (_: Throwable) {
             }
         }

@@ -45,7 +45,7 @@ class PlayerProgressState {
         positionMs = position
         durationMs = duration
         bufferedMs = buffered
-        val stuck = isBuffering && !com.gketch.forge.player.ForgeEngine.isScrubbing
+        val stuck = isBuffering && !com.gketch.forge.player.ForgeEngine.hideBufferHud
         val now = android.os.SystemClock.elapsedRealtime()
         if (stuck) {
             if (bufferingSinceElapsed == 0L) bufferingSinceElapsed = now

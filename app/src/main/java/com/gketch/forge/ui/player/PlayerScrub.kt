@@ -87,11 +87,9 @@ internal fun ensureScrubPlayer(
     val key = mediaUri.toString()
     val existing = hold.scrubPlayer
     if (existing != null && hold.mediaUri == key) return existing
-
     runCatching { existing?.release() }
     hold.scrubPlayer = null
     hold.mediaUri = null
-
     val created = runCatching { ForgeScrubPlayerFactory.create(context) }.getOrNull() ?: return null
     val item = when {
         template != null && template.localConfiguration?.uri == mediaUri -> template
@@ -126,13 +124,11 @@ internal fun startVideoScrub(
     if (hold.volume <= 0f) hold.volume = 1f
     hold.lastPreviewSecondMs = -1L
     hold.pendingMs = -1L
-
     if (main != null) {
         if (main.volume > 0f) runCatching { main.volume = 0f }
         if (hold.wasPlaying) runCatching { main.pause() }
     }
     runCatching { ForgeEngine.setScrubSeek(true) }
-
     val template = runCatching { main?.currentMediaItem }.getOrNull()
     ensureScrubPlayer(context, hold, mediaUri, template)
 }
@@ -179,6 +175,10 @@ internal fun finishVideoScrub(main: Player?, hold: ScrubHold, targetMs: Long) {
     hold.active = false
     hold.lastPreviewSecondMs = -1L
     hold.pendingMs = -1L
+    val extra = hold.scrubPlayer
+    hold.scrubPlayer = null
+    hold.mediaUri = null
+    runCatching { extra?.release() }
 }
 
 @UnstableApi

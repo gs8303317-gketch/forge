@@ -39,7 +39,8 @@ class ResumeStore(context: Context) {
 
     fun continueWatching(
         candidates: List<ForgeMediaItem>,
-        snapshot: Map<String, Long>,n videosOnly: Boolean = true,
+        snapshot: Map<String, Long>,
+        videosOnly: Boolean = true,
     ): List<ContinueWatchItem> {
         val pool = if (videosOnly) candidates.filter { it.isVideo } else candidates
         return pool.mapNotNull { item ->

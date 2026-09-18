@@ -5,7 +5,6 @@ import android.os.Handler
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
-import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -14,12 +13,6 @@ import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import java.util.ArrayList
 
-/**
- * Media3 renderers with:
- * - Video timestamp shift for A/V audio-delay (clock stays on audio).
- * - Decoder preference via MediaCodecSelector (no FFmpeg .so bundled).
- * - ExtensionRendererMode OFF (extensions not shipped; ON/PREFER would no-op without .so).
- */
 @UnstableApi
 class ForgeRenderersFactory(
     context: Context,
@@ -29,6 +22,8 @@ class ForgeRenderersFactory(
     init {
         setExtensionRendererMode(EXTENSION_RENDERER_MODE_OFF)
         setEnableDecoderFallback(true)
+        setEnableAudioFloatOutput(true)
+        setEnableAudioTrackPlaybackParams(true)
         setMediaCodecSelector(selectorFor(decoder))
     }
 
@@ -53,7 +48,6 @@ class ForgeRenderersFactory(
                 MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
             ),
         )
-        // Skip reflective extension video renderers — no libvpx/libgav1/FFmpeg shipped.
     }
 
     override fun buildAudioSink(
@@ -64,7 +58,6 @@ class ForgeRenderersFactory(
         val builder = DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-        // Balance is optional — if processor wiring fails, ship a plain sink.
         try {
             builder.setAudioProcessors(arrayOf(ForgeBalance.processor()))
         } catch (_: Throwable) {
@@ -117,11 +110,6 @@ class ForgeVideoRenderer(
     eventListener,
     maxDroppedFramesToNotify,
 ) {
-    /**
-     * Positive [ForgeEngine.audioDelayMs] delays audio relative to video by presenting
-     * video earlier (negative PTS adjustment). Audio remains the media clock, so a pure
-     * AudioSink delay would shift both A and V together and would not fix sync.
-     */
     override fun getBufferTimestampAdjustmentUs(): Long {
         return -ForgeEngine.audioDelayMs.toLong() * 1_000L
     }

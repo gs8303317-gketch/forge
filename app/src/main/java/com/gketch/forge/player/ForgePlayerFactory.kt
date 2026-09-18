@@ -44,6 +44,7 @@ object ForgePlayerFactory {
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .setHandleAudioBecomingNoisy(ForgeHeadsetPause.enabled)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -56,6 +57,7 @@ object ForgePlayerFactory {
             .apply {
                 playWhenReady = true
                 repeatMode = Player.REPEAT_MODE_OFF
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 skipSilenceEnabled = prefs.skipSilence
                 setSeekParameters(
                     if (prefs.preciseSeek) SeekParameters.EXACT else SeekParameters.DEFAULT,

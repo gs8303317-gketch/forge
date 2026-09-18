@@ -23,7 +23,6 @@ class ResumeStore(context: Context) {
         return store.data.first()[key] ?: 0L
     }
 
-    /** Snapshot of all saved resume keys (`pos_…` → positionMs). */
     suspend fun positionSnapshot(): Map<String, Long> {
         val prefs = store.data.first()
         val out = LinkedHashMap<String, Long>()
@@ -38,14 +37,9 @@ class ResumeStore(context: Context) {
     fun positionOf(snapshot: Map<String, Long>, uri: String): Long =
         snapshot[keyFor(uri)] ?: 0L
 
-    /**
-     * Unfinished items: resume progress > 0 and not near end.
-     * Prefer videos; include audio if present in [candidates].
-     */
     fun continueWatching(
         candidates: List<ForgeMediaItem>,
-        snapshot: Map<String, Long>,
-        videosOnly: Boolean = true,
+        snapshot: Map<String, Long>,n videosOnly: Boolean = true,
     ): List<ContinueWatchItem> {
         val pool = if (videosOnly) candidates.filter { it.isVideo } else candidates
         return pool.mapNotNull { item ->
@@ -55,7 +49,7 @@ class ResumeStore(context: Context) {
             if (dur > 0L && pos >= dur - NEAR_END_MS) return@mapNotNull null
             val progress = if (dur > 0L) (pos.toFloat() / dur.toFloat()).coerceIn(0f, 0.99f) else 0.15f
             ContinueWatchItem(item = item, positionMs = pos, progress = progress)
-        }.sortedByDescending { it.positionMs }.take(24)
+        }.sortedByDescending { it.positionMs }.take(8)
     }
 
     suspend fun savePosition(uri: String, positionMs: Long, durationMs: Long) {
@@ -81,7 +75,6 @@ class ResumeStore(context: Context) {
     companion object {
         const val MIN_SAVE_MS = 3_000L
         const val NEAR_END_MS = 5_000L
-        /** Positions above this prompt Continue vs Start over. */
         const val RESUME_PROMPT_MS = 5_000L
 
         fun keyFor(uri: String): String {

@@ -129,8 +129,9 @@ internal fun startVideoScrub(
         if (hold.wasPlaying) runCatching { main.pause() }
     }
     runCatching { ForgeEngine.setScrubSeek(true) }
-    val template = runCatching { main?.currentMediaItem }.getOrNull()
-    ensureScrubPlayer(context, hold, mediaUri, template)
+    // Do not build a second ExoPlayer here. Watch / back stay on one decoder.
+    // Preview seeks the main player (PREVIOUS_SYNC). Overlay factory remains if UI asks later.
+    hold.mediaUri = mediaUri?.toString()
 }
 
 @UnstableApi
